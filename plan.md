@@ -2,22 +2,38 @@
 
 ## Context
 
-All Claude Code session data (transcripts, metadata, history, stats) lives in `~/.claude/` but is buried in UUIDs and raw JSONL — usable by machines, not by humans. Claudioscope is a Python tool that parses this data and makes it accessible to both humans (via CLI/HTML) and Claude (via a slash command), enabling long-term project planning and context continuity across sessions.
+All Claude Code session data (transcripts, metadata, history, stats) lives in `~/.claude/` but is buried in UUIDs and raw JSONL — usable by machines, not by humans. Claudioscope is an interactive TUI built with Ink (React for CLIs) that parses this data and makes it browsable, enabling long-term project planning and context continuity across sessions.
+
+## Tech Stack
+
+- **Runtime**: Bun
+- **TUI framework**: Ink (React renderer for terminals)
+- **Language**: TypeScript
+- **Styling**: Ink's built-in `<Box>` (Flexbox) + `<Text>` (Chalk-based colors)
+
+Anyone can use npm/pnpm instead of bun — no lock-in beyond the lockfile.
 
 ## Architecture
 
 ```
 ~/claudioscope/
-  pyproject.toml              # uv project, dependencies: rich, jinja2
-  src/claudioscope/
-    __init__.py
-    parser.py                 # Core: reads ~/.claude into structured data
-    models.py                 # Dataclasses: Project, Session, HistoryEntry, Stats
-    cli.py                    # CLI entry point (rich tables)
-    html.py                   # HTML report generator (jinja2 template)
-    templates/
-      report.html             # Single-page HTML template
-  context.md                  # Already exists (our filesystem analysis)
+  package.json
+  tsconfig.json
+  src/
+    index.tsx               # Entry point — renders <App />
+    parser.ts               # Core: reads ~/.claude/ into structured data
+    types.ts                # TypeScript interfaces
+    components/
+      App.tsx               # Root — manages view state / navigation
+      ProjectList.tsx       # List of all projects (home view)
+      ProjectDetail.tsx     # Sessions for a selected project
+      SessionDetail.tsx     # Single session deep-dive
+      Timeline.tsx          # Cross-project chronological view
+      Stats.tsx             # Usage statistics dashboard
+    hooks/
+      useClaudeData.ts      # Load + cache parsed data
+  context.md                # Filesystem analysis (already exists)
+  plan.md                   # This file
 ```
 
 Plus a Claude slash command:
@@ -25,125 +41,163 @@ Plus a Claude slash command:
 ~/.claude/commands/scope.md   # /scope command for in-session queries
 ```
 
-## Models (`models.py`)
+## Types (`types.ts`)
 
-```python
-@dataclass
-class Session:
-    id: str
-    project_path: str
-    first_prompt: str          # First user message (truncated)
-    summary: str               # From sessions-index or generated
-    message_count: int
-    created: datetime
-    modified: datetime
-    git_branch: str
-    model: str                 # Primary model used
-    tools_used: list[str]      # Unique tool names
-    duration_seconds: float    # Last timestamp - first timestamp
-    is_sidechain: bool
+```typescript
+interface Session {
+  id: string;
+  projectPath: string;
+  firstPrompt: string;        // First user message (truncated)
+  summary: string;             // From sessions-index or generated
+  messageCount: number;
+  created: Date;
+  modified: Date;
+  gitBranch: string;
+  model: string;               // Primary model used
+  toolsUsed: string[];         // Unique tool names
+  durationSeconds: number;     // Last timestamp - first timestamp
+  isSidechain: boolean;
+}
 
-@dataclass
-class Project:
-    name: str                  # Human-readable (e.g. "claudiobooks")
-    path: str                  # Original path (e.g. /Users/jerpint/claudiobooks)
-    storage_key: str           # Dir name (e.g. -Users-jerpint-claudiobooks)
-    sessions: list[Session]
-    has_memory: bool
-    memory_files: list[str]
+interface Project {
+  name: string;                // Human-readable (e.g. "claudiobooks")
+  path: string;                // Original path (e.g. /Users/jerpint/claudiobooks)
+  storageKey: string;          // Dir name (e.g. -Users-jerpint-claudiobooks)
+  sessions: Session[];
+  hasMemory: boolean;
+  memoryFiles: string[];
+}
 
-@dataclass
-class HistoryEntry:
-    prompt: str
-    timestamp: datetime
-    project: str
+interface HistoryEntry {
+  prompt: string;
+  timestamp: Date;
+  project: string;
+}
 
-@dataclass
-class Stats:
-    total_sessions: int
-    total_messages: int
-    first_session_date: datetime
-    daily_activity: list[dict]
-    model_usage: dict
+interface Stats {
+  totalSessions: number;
+  totalMessages: number;
+  firstSessionDate: Date;
+  dailyActivity: { date: string; count: number }[];
+  modelUsage: Record<string, number>;
+}
+
+interface ClaudeData {
+  projects: Project[];
+  history: HistoryEntry[];
+  stats: Stats;
+}
 ```
 
-## Parser (`parser.py`)
+## Parser (`parser.ts`)
 
 Single module, reads from `~/.claude/`:
 
-1. **`parse_all() -> dict`** — Main entry, returns `{"projects": [...], "history": [...], "stats": {...}}`
-2. **`parse_projects()`** — Scans `projects/` dirs, reads `sessions-index.json` where available, falls back to parsing `.jsonl` headers for metadata
-3. **`parse_session_meta(jsonl_path)`** — Reads first + last few lines of a `.jsonl` to extract: first prompt, timestamps, model, message count (without loading full file)
-4. **`parse_session_detail(jsonl_path)`** — Full parse: all messages, tool calls, files touched (only called on demand, not during bulk scan)
-5. **`parse_history()`** — Reads `history.jsonl`
-6. **`parse_stats()`** — Reads `stats-cache.json`
+1. **`parseAll(): ClaudeData`** — Main entry, returns all parsed data
+2. **`parseProjects()`** — Scans `projects/` dirs, reads `sessions-index.json` where available, falls back to parsing `.jsonl` headers for metadata
+3. **`parseSessionMeta(jsonlPath)`** — Reads first + last few lines of a `.jsonl` to extract: first prompt, timestamps, model, message count (without loading full file)
+4. **`parseSessionDetail(jsonlPath)`** — Full parse: all messages, tool calls, files touched (only called on demand, not during bulk scan)
+5. **`parseHistory()`** — Reads `history.jsonl`
+6. **`parseStats()`** — Reads `stats-cache.json`
 
 Key design choice: **fast by default**. Bulk scanning reads only `sessions-index.json` + first/last lines of `.jsonl` files. Full transcript parsing is opt-in per session.
 
-## CLI (`cli.py`)
+## TUI Views
 
-Entry point: `uv run claudioscope <command>`
+Entry point: `bun run src/index.tsx`
 
-### Commands:
+### Navigation
 
-**`projects`** — List all projects with session counts, last active date
+Drill-down model to start — keep it simple:
+
 ```
-Project              Sessions  Last Active   Branch
-claudiobooks              9   Jan 27 2026   main
-onix/new-onix-ai         17   Feb 13 2026   feature/x
-onix/onix-ai              9   Feb 13 2026   main
-...
-```
-
-**`timeline [--days N]`** — Cross-project chronological view
-```
-Feb 13  onix/onix-ai          "hey claude, explore ~/.claude..."     47KB
-Feb 11  onix/new-onix-ai      "implement the slack integration..."   18MB
-Feb 11  claudiobooks           "add batch processing for..."          1.9MB
-...
+ProjectList → ProjectDetail → SessionDetail
+                ↕
+             Timeline
+                ↕
+              Stats
 ```
 
-**`project <name>`** — All sessions for a project with summaries
+Keyboard-driven: arrow keys to navigate lists, enter to drill in, escape/backspace to go back, tab or number keys to switch top-level views. We'll figure out the exact keybindings as we build.
+
+### Views:
+
+**ProjectList** (home) — All projects with session counts, last active date
 ```
-Project: claudiobooks (9 sessions, Jan 6 - Jan 27 2026)
+  claudioscope
 
-#  Date       Branch                        Summary                          Msgs
-1  Jan 06     —                             Creative Commons and PD Books      20
-2  Jan 25     main                          Build audiobook podcast platform   73
-3  Jan 26     add/alices-adventures...      Alice in Wonderland Added          12
-...
-```
-
-**`session <id-prefix>`** — Session detail (supports partial UUID match)
-```
-Session: 58c874ab (claudiobooks)
-Date: Jan 25-26 2026 | Duration: 12.5h | Messages: 73 | Model: opus-4-5
-
-First prompt: "were going to build something together - claudiobooks..."
-
-Tools used: Bash(42), Write(15), Read(8), Glob(4), Edit(3), Grep(1)
-
-Key prompts:
-  1. "were going to build something together..."
-  2. "ok lets set up the pipeline..."
-  3. "now generate the first audiobook..."
+  Project                Sessions   Last Active    Branch
+▸ claudiobooks                 9   Jan 27 2026    main
+  onix/new-onix-ai            17   Feb 13 2026    feature/x
+  onix/onix-ai                 9   Feb 13 2026    main
   ...
+
+  ↑↓ navigate  ⏎ open  t timeline  s stats  q quit
 ```
 
-**`stats`** — Usage statistics summary
+**ProjectDetail** — Sessions for a selected project
+```
+  claudiobooks — 9 sessions (Jan 6 – Jan 27 2026)
 
-**`report`** — Generate HTML report to `~/claudioscope/report.html` and open it
+  #  Date       Branch                  Summary                           Msgs
+  1  Jan 06     —                       Creative Commons and PD Books       20
+▸ 2  Jan 25     main                    Build audiobook podcast platform    73
+  3  Jan 26     add/alices-adventures   Alice in Wonderland Added           12
+  ...
 
-## HTML Report (`html.py` + `templates/report.html`)
+  ↑↓ navigate  ⏎ open session  esc back  q quit
+```
 
-Single-page HTML with inline CSS (no external deps), containing:
-- **Contribution graph** — GitHub-style heatmap of daily activity (messages or sessions). Shows at a glance how much of a power user you are. Color intensity = message count for that day. Nice-to-have: hover tooltips with details.
-- Project index table (sortable)
-- Timeline view (chronological list)
-- Stats dashboard (model usage breakdown, peak hours bar chart)
-- Links/anchors to jump between sections
+**SessionDetail** — Single session deep-dive
+```
+  Session 58c874ab — claudiobooks
+  Jan 25–26 2026 | 12.5h | 73 messages | opus-4-5
 
-Uses Jinja2 for templating. The parser feeds data, Jinja2 renders it.
+  First prompt: "were going to build something together — claudiobooks..."
+
+  Tools: Bash(42) Write(15) Read(8) Glob(4) Edit(3) Grep(1)
+
+  Key prompts:
+    1. "were going to build something together..."
+    2. "ok lets set up the pipeline..."
+    3. "now generate the first audiobook..."
+
+  esc back  q quit
+```
+
+**Timeline** — Cross-project chronological view
+```
+  Timeline (last 30 days)
+
+  Date     Project                Prompt                              Size
+  Feb 13   onix/onix-ai          "hey claude, explore ~/.claude..."   47KB
+  Feb 11   onix/new-onix-ai      "implement the slack integration…"   18MB
+  Feb 11   claudiobooks           "add batch processing for..."        1.9MB
+  ...
+
+  ↑↓ navigate  ⏎ open session  p projects  s stats  q quit
+```
+
+**Stats** — Usage statistics dashboard
+```
+  Stats — 51 sessions, 9,804 messages since Jan 6 2026
+
+  Activity (last 60 days):
+  ▁▂▁▃▅▇▃▁▂▄▅▂▁▃▂▁▁▂▅▃▁▁▂▁▃▁▂▄▃▂   (sparkline or mini bar chart)
+
+  Models:
+    claude-opus-4-5    38 sessions
+    claude-opus-4-6    13 sessions
+
+  Peak hours:  2–3 PM (11 sessions)
+  Longest session: 1,144 msgs / 12.5h (claudiobooks)
+
+  p projects  t timeline  q quit
+```
+
+## HTML Report
+
+No built-in HTML generator — just ask Claude `/scope report` and let it generate one from the parsed data. One less thing to maintain.
 
 ## Claude Slash Command (`~/.claude/commands/scope.md`)
 
@@ -154,13 +208,12 @@ description: Browse Claude Code session history and project context with claudio
 
 Run claudioscope to answer the user's question about their session history.
 
-Available commands (run via `uv run claudioscope <cmd>` from ~/claudioscope/):
+Available commands (run via `bun run ~/claudioscope/src/index.tsx <cmd>`):
 - `projects` — list all projects
 - `timeline` — cross-project chronological view
 - `project <name>` — sessions for a specific project
 - `session <id>` — session detail
 - `stats` — usage statistics
-- `report` — generate HTML report
 
 Based on $ARGUMENTS, run the appropriate claudioscope command and present
 the results. If no arguments given, run `projects` for an overview.
@@ -182,7 +235,7 @@ Some transcripts have `644` permissions (world-readable), though most are `600`.
 
 ### The `audit` Command
 
-`uv run claudioscope audit [--fix]`
+`bun run src/index.tsx audit [--fix]`
 
 Scans all session transcripts **and user prompt history** for potential secrets using pattern matching:
 - API key patterns (e.g. `sk-`, `AKIA`, `ghp_`, `xoxb-`, bearer tokens)
@@ -253,19 +306,21 @@ Claude.ai web sessions are stored server-side with no local export. This is a ga
 
 ## Implementation Steps
 
-1. **Scaffold project** — `pyproject.toml` with deps (rich, jinja2), src layout
-2. **Models** — dataclasses in `models.py`
-3. **Parser** — `parser.py` with fast metadata extraction
-4. **CLI** — `cli.py` with all subcommands using rich for tables
-5. **HTML** — `html.py` + `templates/report.html` with Jinja2
-6. **Slash command** — `~/.claude/commands/scope.md`
-7. **Test** — run each CLI command, generate HTML report, verify `/scope` works
+1. **Scaffold project** — `package.json` with deps (ink, react), tsconfig, bun setup
+2. **Types** — interfaces in `types.ts`
+3. **Parser** — `parser.ts` with fast metadata extraction
+4. **TUI components** — Start with `App.tsx` + `ProjectList.tsx`, iterate from there
+5. **Navigation** — Wire up drill-down between views
+6. **Remaining views** — `ProjectDetail`, `SessionDetail`, `Timeline`, `Stats`
+7. **Slash command** — `~/.claude/commands/scope.md`
+8. **Test** — Run the TUI against real `~/.claude/` data, verify navigation and data accuracy
 
 ## Verification
 
-1. `uv run claudioscope projects` — should list 14 projects with correct session counts
-2. `uv run claudioscope timeline --days 30` — should show recent sessions chronologically
-3. `uv run claudioscope project claudiobooks` — should show 9 sessions with summaries
-4. `uv run claudioscope session 58c874ab` — should show the long claudiobooks session
-5. `uv run claudioscope report` — should generate and open `report.html`
-6. `/scope projects` — should work as a Claude Code slash command
+1. `bun run src/index.tsx` — TUI launches, shows project list with correct session counts
+2. Arrow keys + enter — Navigate into a project, see its sessions
+3. Enter on a session — See session detail with first prompt, tools, duration
+4. `t` key — Timeline view shows recent sessions across all projects
+5. `s` key — Stats view shows usage summary
+6. `q` key — Quit cleanly
+7. `/scope projects` — Works as a Claude Code slash command
