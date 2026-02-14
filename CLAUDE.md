@@ -19,10 +19,11 @@ src/
   hooks/              # Custom React hooks
 ```
 
-## Commands
+## Setup
 
+- `brew install oven-sh/bun/bun` — install bun
 - `bun install` — install dependencies
-- `bun run src/index.tsx` — launch the TUI
+- `bun run start` — launch the TUI
 
 ## Key Files
 

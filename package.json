@@ -1,0 +1,17 @@
+{
+  "name": "claudioscope",
+  "version": "0.0.1",
+  "private": true,
+  "type": "module",
+  "scripts": {
+    "start": "bun run src/index.tsx"
+  },
+  "dependencies": {
+    "ink": "^5.1.0",
+    "react": "^18.3.1"
+  },
+  "devDependencies": {
+    "@types/react": "^18.3.12",
+    "typescript": "^5.7.0"
+  }
+}
