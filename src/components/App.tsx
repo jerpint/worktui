@@ -22,7 +22,7 @@ export default function App({ initialView, onLaunch }: AppProps) {
 
   switch (view.kind) {
     case "list":
-      return <WorktreeList onNavigate={navigate} onQuit={quit} />;
+      return <WorktreeList onNavigate={navigate} onLaunch={onLaunch} onQuit={quit} />;
     case "detail":
       return (
         <WorktreeDetail

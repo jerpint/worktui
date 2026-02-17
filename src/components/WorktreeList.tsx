@@ -1,6 +1,6 @@
 import { Box, Text, useInput } from "ink";
 import { useState, useEffect, useMemo } from "react";
-import type { Worktree, View } from "../types.js";
+import type { Worktree, View, LaunchTarget } from "../types.js";
 import { listWorktrees, getGitRoot } from "../git.js";
 import { relativeTime, truncate, fuzzyMatch } from "../utils.js";
 import StatusBar from "./StatusBar.js";
@@ -10,16 +10,17 @@ type Mode = "insert" | "normal";
 
 interface WorktreeListProps {
   onNavigate: (view: View) => void;
+  onLaunch: (target: LaunchTarget) => void;
   onQuit: () => void;
 }
 
-export default function WorktreeList({ onNavigate, onQuit }: WorktreeListProps) {
+export default function WorktreeList({ onNavigate, onLaunch, onQuit }: WorktreeListProps) {
   const [worktrees, setWorktrees] = useState<Worktree[]>([]);
   const [selected, setSelected] = useState(0);
   const [sortBy, setSortBy] = useState<SortKey>("date");
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
-  const [mode, setMode] = useState<Mode>("insert");
+  const [mode, setMode] = useState<Mode>("normal");
   const [filter, setFilter] = useState("");
 
   const load = async () => {
@@ -131,6 +132,9 @@ export default function WorktreeList({ onNavigate, onQuit }: WorktreeListProps) 
         const idx = keys.indexOf(prev);
         return keys[(idx + 1) % keys.length];
       });
+    } else if (input === "o") {
+      const wt = displayWorktrees[selected];
+      if (wt) onLaunch({ kind: "shell", cwd: wt.path });
     } else if (input === "r") {
       load();
     }
@@ -219,9 +223,10 @@ export default function WorktreeList({ onNavigate, onQuit }: WorktreeListProps) 
                 { key: "esc", label: "normal mode" },
               ]
             : [
-                { key: "/,i", label: "filter" },
+                { key: "/", label: "filter" },
                 { key: "j/k", label: "navigate" },
                 { key: "\u23CE", label: "open" },
+                { key: "o", label: "shell" },
                 { key: "c", label: "create" },
                 { key: "d", label: "delete" },
                 { key: "x", label: "cleanup" },
