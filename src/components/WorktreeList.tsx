@@ -79,15 +79,15 @@ export default function WorktreeList({ onNavigate, onLaunch, onQuit }: WorktreeL
     if (key.downArrow) { navigate("down"); return; }
     if (key.upArrow) { navigate("up"); return; }
 
-    // Enter always opens selected item
+    // Enter always opens shell in worktree
     if (key.return) {
       const wt = displayWorktrees[selected];
-      if (wt) onNavigate({ kind: "detail", worktree: wt });
+      if (wt) onLaunch({ kind: "shell", cwd: wt.path });
       return;
     }
 
-    // l opens detail in normal mode
-    if (mode === "normal" && input === "l") {
+    // l/o opens detail view in normal mode
+    if (mode === "normal" && (input === "l" || input === "o")) {
       const wt = displayWorktrees[selected];
       if (wt) onNavigate({ kind: "detail", worktree: wt });
       return;
@@ -139,9 +139,6 @@ export default function WorktreeList({ onNavigate, onLaunch, onQuit }: WorktreeL
         const idx = keys.indexOf(prev);
         return keys[(idx + 1) % keys.length];
       });
-    } else if (input === "o") {
-      const wt = displayWorktrees[selected];
-      if (wt) onLaunch({ kind: "shell", cwd: wt.path });
     } else if (input === "r") {
       load();
     }
@@ -232,8 +229,8 @@ export default function WorktreeList({ onNavigate, onLaunch, onQuit }: WorktreeL
             : [
                 { key: "/", label: "filter" },
                 { key: "j/k", label: "navigate" },
-                { key: "\u23CE", label: "open" },
-                { key: "o", label: "shell" },
+                { key: "\u23CE", label: "shell" },
+                { key: "o", label: "sessions" },
                 { key: "c", label: "create" },
                 { key: "d", label: "delete" },
                 { key: "x", label: "cleanup" },
