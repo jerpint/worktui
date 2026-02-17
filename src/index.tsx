@@ -57,13 +57,8 @@ async function main() {
 
   // Write launch instructions to temp file for the shell wrapper
   const target = launchTarget as LaunchTarget | null;
-  console.error("[bun] target:", JSON.stringify(target));
   if (target) {
-    const json = JSON.stringify(target);
-    console.error("[bun] writing launch file:", json);
-    writeFileSync(LAUNCH_FILE, json);
-  } else {
-    console.error("[bun] no target, exiting");
+    writeFileSync(LAUNCH_FILE, JSON.stringify(target));
   }
 }
 

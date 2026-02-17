@@ -14,16 +14,12 @@ wt() {
 
   local payload=$(cat "$launch_file")
   rm -f "$launch_file"
-  echo "[wt] payload: $payload" >&2
 
-  # Parse kind and cwd from JSON using parameter expansion
   local kind="${payload#*\"kind\":\"}"
   kind="${kind%%\"*}"
 
   local cwd="${payload#*\"cwd\":\"}"
   cwd="${cwd%%\"*}"
-
-  echo "[wt] kind=$kind cwd=$cwd" >&2
 
   if [ "$kind" = "shell" ]; then
     cd "$cwd"
@@ -33,8 +29,6 @@ wt() {
       session_id="${payload#*\"sessionId\":\"}"
       session_id="${session_id%%\"*}"
     fi
-
-    echo "[wt] session_id=$session_id" >&2
 
     cd "$cwd"
     if [ -n "$session_id" ]; then
