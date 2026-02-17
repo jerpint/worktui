@@ -1,13 +1,11 @@
 #!/usr/bin/env bun
 import { render } from "ink";
 import { writeFileSync, unlinkSync } from "fs";
-import { tmpdir } from "os";
-import { join } from "path";
 import { getGitRoot, createWorktree, createDraftPR } from "./git.js";
 import App from "./components/App.js";
 import type { LaunchTarget, View } from "./types.js";
 
-const CD_FILE = join(tmpdir(), "claudioscope-cd");
+const LAUNCH_FILE = "/tmp/claudioscope-launch";
 
 async function main() {
   const args = process.argv.slice(2);
@@ -39,8 +37,8 @@ async function main() {
     initialView = { kind: "cleanup" };
   }
 
-  // Clean up stale cd file before TUI starts
-  try { unlinkSync(CD_FILE); } catch {}
+  // Clean up stale launch file before TUI starts
+  try { unlinkSync(LAUNCH_FILE); } catch {}
 
   // TUI mode
   let launchTarget: LaunchTarget | null = null;
@@ -57,24 +55,15 @@ async function main() {
 
   await instance.waitUntilExit();
 
-  // After TUI exits, launch the requested target
+  // Write launch instructions to temp file for the shell wrapper
   const target = launchTarget as LaunchTarget | null;
+  console.error("[bun] target:", JSON.stringify(target));
   if (target) {
-    if (target.kind === "claude") {
-      const cmd = target.sessionId
-        ? ["claude", "--resume", target.sessionId]
-        : ["claude"];
-      const proc = Bun.spawn(cmd, {
-        cwd: target.cwd,
-        stdin: "inherit",
-        stdout: "inherit",
-        stderr: "inherit",
-      });
-      await proc.exited;
-    } else if (target.kind === "shell") {
-      // Write path to temp file for the shell wrapper to cd into
-      writeFileSync(CD_FILE, target.cwd);
-    }
+    const json = JSON.stringify(target);
+    console.error("[bun] writing launch file:", json);
+    writeFileSync(LAUNCH_FILE, json);
+  } else {
+    console.error("[bun] no target, exiting");
   }
 }
 
