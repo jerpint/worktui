@@ -212,6 +212,26 @@ export async function deleteBranch(
   if (exitCode !== 0) throw new Error(`Failed to delete branch: ${stderr}`);
 }
 
+export async function fetchRemote(gitRoot: string): Promise<void> {
+  const { exitCode, stderr } = await run(["git", "fetch", "--prune"], gitRoot);
+  if (exitCode !== 0) throw new Error(`Failed to fetch: ${stderr}`);
+}
+
+export async function listRemoteBranches(
+  gitRoot: string,
+  localBranches: Set<string>
+): Promise<string[]> {
+  const { stdout } = await run(
+    ["git", "branch", "-r", "--format=%(refname:short)"],
+    gitRoot
+  );
+  return stdout
+    .split("\n")
+    .filter((b) => b && !b.includes("->")) // skip HEAD -> origin/main
+    .map((b) => b.replace(/^origin\//, ""))
+    .filter((b) => !localBranches.has(b));
+}
+
 export async function createDraftPR(
   cwd: string,
   branch: string

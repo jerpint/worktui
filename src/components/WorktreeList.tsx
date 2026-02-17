@@ -139,6 +139,8 @@ export default function WorktreeList({ onNavigate, onLaunch, onQuit }: WorktreeL
         const idx = keys.indexOf(prev);
         return keys[(idx + 1) % keys.length];
       });
+    } else if (input === "f") {
+      onNavigate({ kind: "fetch" });
     } else if (input === "r") {
       load();
     }
@@ -232,6 +234,7 @@ export default function WorktreeList({ onNavigate, onLaunch, onQuit }: WorktreeL
                 { key: "\u23CE", label: "shell" },
                 { key: "o", label: "sessions" },
                 { key: "c", label: "create" },
+                { key: "f", label: "fetch" },
                 { key: "d", label: "delete" },
                 { key: "x", label: "cleanup" },
                 { key: "s", label: "sort" },

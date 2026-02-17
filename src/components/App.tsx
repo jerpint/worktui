@@ -6,6 +6,7 @@ import WorktreeDetail from "./WorktreeDetail.js";
 import CreateWorktree from "./CreateWorktree.js";
 import DeleteConfirm from "./DeleteConfirm.js";
 import Cleanup from "./Cleanup.js";
+import FetchBranch from "./FetchBranch.js";
 
 interface AppProps {
   initialView: View;
@@ -38,5 +39,7 @@ export default function App({ initialView, onLaunch }: AppProps) {
       return <DeleteConfirm worktree={view.worktree} onBack={goHome} onQuit={quit} />;
     case "cleanup":
       return <Cleanup onBack={goHome} onQuit={quit} />;
+    case "fetch":
+      return <FetchBranch onBack={goHome} onQuit={quit} onLaunch={onLaunch} />;
   }
 }

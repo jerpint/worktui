@@ -24,7 +24,8 @@ export type View =
   | { kind: "detail"; worktree: Worktree }
   | { kind: "create" }
   | { kind: "delete"; worktree: Worktree }
-  | { kind: "cleanup" };
+  | { kind: "cleanup" }
+  | { kind: "fetch" };
 
 export type LaunchTarget =
   | { kind: "claude"; cwd: string; sessionId?: string }
