@@ -2,7 +2,7 @@
 import { render } from "ink";
 import { getGitRoot, createWorktree, createDraftPR } from "./git.js";
 import App from "./components/App.js";
-import type { ResumeTarget, View } from "./types.js";
+import type { LaunchTarget, View } from "./types.js";
 
 async function main() {
   const args = process.argv.slice(2);
@@ -35,13 +35,13 @@ async function main() {
   }
 
   // TUI mode
-  let resumeTarget: ResumeTarget | null = null;
+  let launchTarget: LaunchTarget | null = null;
 
   const instance = render(
     <App
       initialView={initialView}
-      onResume={(target) => {
-        resumeTarget = target;
+      onLaunch={(target) => {
+        launchTarget = target;
         instance.unmount();
       }}
     />
@@ -49,19 +49,30 @@ async function main() {
 
   await instance.waitUntilExit();
 
-  // After TUI exits, resume a Claude session if requested
-  const target = resumeTarget as ResumeTarget | null;
+  // After TUI exits, launch the requested target
+  const target = launchTarget as LaunchTarget | null;
   if (target) {
-    const args = target.sessionId
-      ? ["claude", "--resume", target.sessionId]
-      : ["claude"];
-    const proc = Bun.spawn(args, {
-      cwd: target.cwd,
-      stdin: "inherit",
-      stdout: "inherit",
-      stderr: "inherit",
-    });
-    await proc.exited;
+    if (target.kind === "claude") {
+      const cmd = target.sessionId
+        ? ["claude", "--resume", target.sessionId]
+        : ["claude"];
+      const proc = Bun.spawn(cmd, {
+        cwd: target.cwd,
+        stdin: "inherit",
+        stdout: "inherit",
+        stderr: "inherit",
+      });
+      await proc.exited;
+    } else if (target.kind === "shell") {
+      const shell = process.env.SHELL || "/bin/zsh";
+      const proc = Bun.spawn([shell], {
+        cwd: target.cwd,
+        stdin: "inherit",
+        stdout: "inherit",
+        stderr: "inherit",
+      });
+      await proc.exited;
+    }
   }
 }
 

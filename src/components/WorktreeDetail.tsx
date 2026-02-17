@@ -1,6 +1,6 @@
 import { Box, Text, useInput } from "ink";
 import { useState, useEffect } from "react";
-import type { Worktree, ClaudeSession, ResumeTarget } from "../types.js";
+import type { Worktree, ClaudeSession, LaunchTarget } from "../types.js";
 import { getSessions } from "../sessions.js";
 import { relativeTime, truncate } from "../utils.js";
 import StatusBar from "./StatusBar.js";
@@ -9,14 +9,14 @@ interface WorktreeDetailProps {
   worktree: Worktree;
   onBack: () => void;
   onQuit: () => void;
-  onResume: (target: ResumeTarget) => void;
+  onLaunch: (target: LaunchTarget) => void;
 }
 
 export default function WorktreeDetail({
   worktree,
   onBack,
   onQuit,
-  onResume,
+  onLaunch,
 }: WorktreeDetailProps) {
   const [sessions, setSessions] = useState<ClaudeSession[]>([]);
   const [selected, setSelected] = useState(0);
@@ -51,19 +51,19 @@ export default function WorktreeDetail({
 
     if (key.return) {
       if (selected === 0) {
-        onResume({ cwd: worktree.path });
+        onLaunch({ kind: "claude", cwd: worktree.path });
       } else {
         const session = sessions[selected - 1];
         if (session) {
-          onResume({ sessionId: session.sessionId, cwd: worktree.path });
+          onLaunch({ kind: "claude", sessionId: session.sessionId, cwd: worktree.path });
         }
       }
     } else if (input === "n") {
-      // Shortcut: new session
-      onResume({ cwd: worktree.path });
+      onLaunch({ kind: "claude", cwd: worktree.path });
     } else if (input === "r" && sessions.length > 0) {
-      // Shortcut: resume most recent session
-      onResume({ sessionId: sessions[0].sessionId, cwd: worktree.path });
+      onLaunch({ kind: "claude", sessionId: sessions[0].sessionId, cwd: worktree.path });
+    } else if (input === "o") {
+      onLaunch({ kind: "shell", cwd: worktree.path });
     }
   });
 
@@ -145,6 +145,7 @@ export default function WorktreeDetail({
           { key: "\u23CE", label: "select" },
           { key: "n", label: "new session" },
           { key: "r", label: "resume last" },
+          { key: "o", label: "open shell" },
           { key: "esc/h", label: "back" },
           { key: "q", label: "quit" },
         ]}

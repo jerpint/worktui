@@ -1,6 +1,6 @@
 import { useApp } from "ink";
 import { useState } from "react";
-import type { View, ResumeTarget } from "../types.js";
+import type { View, LaunchTarget } from "../types.js";
 import WorktreeList from "./WorktreeList.js";
 import WorktreeDetail from "./WorktreeDetail.js";
 import CreateWorktree from "./CreateWorktree.js";
@@ -9,10 +9,10 @@ import Cleanup from "./Cleanup.js";
 
 interface AppProps {
   initialView: View;
-  onResume: (target: ResumeTarget) => void;
+  onLaunch: (target: LaunchTarget) => void;
 }
 
-export default function App({ initialView, onResume }: AppProps) {
+export default function App({ initialView, onLaunch }: AppProps) {
   const { exit } = useApp();
   const [view, setView] = useState<View>(initialView);
 
@@ -29,7 +29,7 @@ export default function App({ initialView, onResume }: AppProps) {
           worktree={view.worktree}
           onBack={goHome}
           onQuit={quit}
-          onResume={onResume}
+          onLaunch={onLaunch}
         />
       );
     case "create":

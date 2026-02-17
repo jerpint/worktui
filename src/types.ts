@@ -26,7 +26,6 @@ export type View =
   | { kind: "delete"; worktree: Worktree }
   | { kind: "cleanup" };
 
-export interface ResumeTarget {
-  sessionId?: string;
-  cwd: string;
-}
+export type LaunchTarget =
+  | { kind: "claude"; cwd: string; sessionId?: string }
+  | { kind: "shell"; cwd: string };
