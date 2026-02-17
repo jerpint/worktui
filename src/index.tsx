@@ -52,7 +52,10 @@ async function main() {
   // After TUI exits, resume a Claude session if requested
   const target = resumeTarget as ResumeTarget | null;
   if (target) {
-    const proc = Bun.spawn(["claude", "--resume", target.sessionId], {
+    const args = target.sessionId
+      ? ["claude", "--resume", target.sessionId]
+      : ["claude"];
+    const proc = Bun.spawn(args, {
       cwd: target.cwd,
       stdin: "inherit",
       stdout: "inherit",

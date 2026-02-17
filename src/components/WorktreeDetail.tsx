@@ -39,8 +39,8 @@ export default function WorktreeDetail({
       return;
     }
 
-    const count = sessions.length;
-    if (count === 0) return;
+    // +1 for the "New session" row at index 0
+    const count = sessions.length + 1;
 
     // Vim navigation
     if (input === "j" || key.downArrow) {
@@ -50,10 +50,20 @@ export default function WorktreeDetail({
     }
 
     if (key.return) {
-      const session = sessions[selected];
-      if (session) {
-        onResume({ sessionId: session.sessionId, cwd: worktree.path });
+      if (selected === 0) {
+        onResume({ cwd: worktree.path });
+      } else {
+        const session = sessions[selected - 1];
+        if (session) {
+          onResume({ sessionId: session.sessionId, cwd: worktree.path });
+        }
       }
+    } else if (input === "n") {
+      // Shortcut: new session
+      onResume({ cwd: worktree.path });
+    } else if (input === "r" && sessions.length > 0) {
+      // Shortcut: resume most recent session
+      onResume({ sessionId: sessions[0].sessionId, cwd: worktree.path });
     }
   });
 
@@ -75,55 +85,66 @@ export default function WorktreeDetail({
         <Box marginTop={1}>
           <Text>Loading sessions...</Text>
         </Box>
-      ) : sessions.length === 0 ? (
-        <Box marginTop={1}>
-          <Text dimColor>No Claude sessions found for this worktree.</Text>
-        </Box>
       ) : (
-        <>
-          <Text dimColor>Sessions ({sessions.length}):</Text>
-          <Box marginTop={1} flexDirection="column">
-            <Box>
-              <Text dimColor>{"   Date            Summary                                    Msgs"}</Text>
-            </Box>
-            {sessions.map((s, i) => {
-              const isSelected = i === selected;
-              const prefix = isSelected ? " >" : "  ";
-              const dateStr = s.modified.toLocaleDateString("en-US", {
-                month: "short",
-                day: "numeric",
-              });
-              const timeStr = s.modified.toLocaleTimeString("en-US", {
-                hour: "2-digit",
-                minute: "2-digit",
-                hour12: false,
-              });
-              const summary = truncate(s.summary || s.firstPrompt || "(no prompt)", 43);
-              const msgs = String(s.messageCount).padStart(4);
-
-              return (
-                <Box key={s.sessionId}>
-                  <Text color={isSelected ? "green" : undefined} bold={isSelected}>
-                    {prefix}{" "}
-                  </Text>
-                  <Text color={isSelected ? "green" : "white"}>
-                    {`${dateStr} ${timeStr}`.padEnd(16)}
-                  </Text>
-                  <Text color={isSelected ? "green" : undefined}>
-                    {summary.padEnd(45)}
-                  </Text>
-                  <Text dimColor>{msgs}</Text>
-                </Box>
-              );
-            })}
+        <Box marginTop={1} flexDirection="column">
+          <Box>
+            <Text color={selected === 0 ? "green" : "cyan"} bold>
+              {selected === 0 ? " > " : "   "}
+              + New session
+            </Text>
           </Box>
-        </>
+
+          {sessions.length > 0 && (
+            <>
+              <Box marginTop={1}>
+                <Text dimColor>Previous sessions ({sessions.length}):</Text>
+              </Box>
+              <Box flexDirection="column">
+                <Box>
+                  <Text dimColor>{"   Date            Summary                                    Msgs"}</Text>
+                </Box>
+                {sessions.map((s, i) => {
+                  const isSelected = i + 1 === selected;
+                  const prefix = isSelected ? " >" : "  ";
+                  const dateStr = s.modified.toLocaleDateString("en-US", {
+                    month: "short",
+                    day: "numeric",
+                  });
+                  const timeStr = s.modified.toLocaleTimeString("en-US", {
+                    hour: "2-digit",
+                    minute: "2-digit",
+                    hour12: false,
+                  });
+                  const summary = truncate(s.summary || s.firstPrompt || "(no prompt)", 43);
+                  const msgs = String(s.messageCount).padStart(4);
+
+                  return (
+                    <Box key={s.sessionId}>
+                      <Text color={isSelected ? "green" : undefined} bold={isSelected}>
+                        {prefix}{" "}
+                      </Text>
+                      <Text color={isSelected ? "green" : "white"}>
+                        {`${dateStr} ${timeStr}`.padEnd(16)}
+                      </Text>
+                      <Text color={isSelected ? "green" : undefined}>
+                        {summary.padEnd(45)}
+                      </Text>
+                      <Text dimColor>{msgs}</Text>
+                    </Box>
+                  );
+                })}
+              </Box>
+            </>
+          )}
+        </Box>
       )}
 
       <StatusBar
         hints={[
           { key: "j/k", label: "navigate" },
-          { key: "\u23CE", label: "resume session" },
+          { key: "\u23CE", label: "select" },
+          { key: "n", label: "new session" },
+          { key: "r", label: "resume last" },
           { key: "esc/h", label: "back" },
           { key: "q", label: "quit" },
         ]}

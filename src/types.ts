@@ -27,6 +27,6 @@ export type View =
   | { kind: "cleanup" };
 
 export interface ResumeTarget {
-  sessionId: string;
+  sessionId?: string;
   cwd: string;
 }
