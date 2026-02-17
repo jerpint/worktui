@@ -24,6 +24,9 @@ async function main() {
         const prUrl = await createDraftPR(worktreePath, branch);
         console.log(prUrl);
       }
+
+      // Write launch file so shell wrapper cd's into the worktree
+      writeFileSync(LAUNCH_FILE, JSON.stringify({ kind: "shell", cwd: worktreePath }));
     } catch (err: any) {
       console.error(`Error: ${err.message}`);
       process.exit(1);
