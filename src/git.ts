@@ -22,12 +22,15 @@ async function run(
 }
 
 export async function getGitRoot(cwd?: string): Promise<string> {
-  const { stdout, exitCode } = await run(
-    ["git", "rev-parse", "--show-toplevel"],
+  // Use --git-common-dir to always resolve to the main repo,
+  // even when called from inside a worktree.
+  const { stdout: commonDir, exitCode } = await run(
+    ["git", "rev-parse", "--path-format=absolute", "--git-common-dir"],
     cwd
   );
   if (exitCode !== 0) throw new Error("Not a git repository");
-  return stdout;
+  // commonDir is e.g. /Users/x/repo/.git — parent is the repo root
+  return resolve(commonDir, "..");
 }
 
 export async function isDirty(path: string): Promise<boolean> {
