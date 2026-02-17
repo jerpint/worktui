@@ -27,3 +27,26 @@ export function encodePath(absolutePath: string): string {
 export function branchToFolder(branch: string): string {
   return branch.replace(/\//g, "-");
 }
+
+/**
+ * Fuzzy match: characters in query must appear in order in target.
+ * Returns a score (lower = better) or -1 for no match.
+ */
+export function fuzzyMatch(query: string, target: string): number {
+  const q = query.toLowerCase();
+  const t = target.toLowerCase();
+  let qi = 0;
+  let score = 0;
+  let lastMatch = -1;
+
+  for (let ti = 0; ti < t.length && qi < q.length; ti++) {
+    if (t[ti] === q[qi]) {
+      // Bonus for consecutive matches
+      score += ti - lastMatch === 1 ? 0 : ti - lastMatch;
+      lastMatch = ti;
+      qi++;
+    }
+  }
+
+  return qi === q.length ? score : -1;
+}
