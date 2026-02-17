@@ -86,6 +86,13 @@ export default function WorktreeList({ onNavigate, onLaunch, onQuit }: WorktreeL
       return;
     }
 
+    // l opens detail in normal mode
+    if (mode === "normal" && input === "l") {
+      const wt = displayWorktrees[selected];
+      if (wt) onNavigate({ kind: "detail", worktree: wt });
+      return;
+    }
+
     if (mode === "insert") {
       if (key.escape) {
         setMode("normal");
