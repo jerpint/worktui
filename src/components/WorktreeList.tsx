@@ -4,6 +4,7 @@ import type { Worktree, View, LaunchTarget } from "../types.js";
 import { listWorktrees, getGitRoot } from "../git.js";
 import { relativeTime, truncate, fuzzyMatch } from "../utils.js";
 import StatusBar from "./StatusBar.js";
+import { theme } from "../theme.js";
 
 type SortKey = "date" | "branch" | "status";
 type Mode = "insert" | "normal";
@@ -167,7 +168,7 @@ export default function WorktreeList({ onNavigate, onLaunch, onQuit }: WorktreeL
   if (error) {
     return (
       <Box flexDirection="column" padding={1}>
-        <Text color="red">Error: {error}</Text>
+        <Text color={theme.error}>Error: {error}</Text>
         <Text dimColor>Make sure you are in a git repository.</Text>
       </Box>
     );
@@ -175,18 +176,18 @@ export default function WorktreeList({ onNavigate, onLaunch, onQuit }: WorktreeL
 
   const cwd = process.cwd();
   const modeLabel = mode === "insert" ? "INSERT" : "NORMAL";
-  const modeColor = mode === "insert" ? "yellow" : "blue";
+  const modeColor = mode === "insert" ? theme.modeInsert : theme.modeNormal;
 
   return (
     <Box flexDirection="column" padding={1}>
       <Box flexDirection="column">
-        <Box><Text color="green">{"        _   "}</Text></Box>
-        <Box><Text color="green">{"  _ _ _| |_ "}</Text><Text bold> worktui</Text></Box>
-        <Box><Text color="green">{" | | | |  _|"}</Text></Box>
-        <Box><Text color="green">{" |_____|_|  "}</Text></Box>
+        <Box><Text color={theme.logo}>{"        _   "}</Text></Box>
+        <Box><Text color={theme.logo}>{"  _ _ _| |_ "}</Text><Text color={theme.bold} bold> worktui</Text></Box>
+        <Box><Text color={theme.logo}>{" | | | |  _|"}</Text></Box>
+        <Box><Text color={theme.logo}>{" |_____|_|  "}</Text></Box>
       </Box>
       <Box marginTop={1}>
-        <Text dimColor>
+        <Text color={theme.dim}>
           {displayWorktrees.length}{filter ? `/${worktrees.length}` : ""} worktrees
           {"  "}sorted by: {sortBy}{"  "}
         </Text>
@@ -194,14 +195,14 @@ export default function WorktreeList({ onNavigate, onLaunch, onQuit }: WorktreeL
       </Box>
 
       <Box marginTop={1}>
-        <Text color={mode === "insert" ? "yellow" : "gray"}>{"> "}</Text>
-        <Text>{filter}</Text>
-        {mode === "insert" && <Text color="yellow">|</Text>}
+        <Text color={mode === "insert" ? theme.modeInsert : theme.dim}>{"> "}</Text>
+        <Text color={theme.text}>{filter}</Text>
+        {mode === "insert" && <Text color={theme.modeInsert}>|</Text>}
       </Box>
 
       <Box flexDirection="column">
         {displayWorktrees.length === 0 ? (
-          <Text dimColor>
+          <Text color={theme.dim}>
             {filter ? "No matches." : "No worktrees found. Press c to create one."}
           </Text>
         ) : (
@@ -213,7 +214,7 @@ export default function WorktreeList({ onNavigate, onLaunch, onQuit }: WorktreeL
             const branchDisplay = truncate(wt.branch || "(detached)", 38);
             const time = relativeTime(wt.commitDate);
             const status = wt.isDirty ? "DIRTY" : "clean";
-            const statusColor = wt.isDirty ? "red" : "green";
+            const statusColor = wt.isDirty ? theme.dirty : theme.clean;
             const sessions =
               wt.sessionCount > 0
                 ? `${wt.sessionCount} session${wt.sessionCount > 1 ? "s" : ""}`
@@ -243,19 +244,19 @@ export default function WorktreeList({ onNavigate, onLaunch, onQuit }: WorktreeL
 
             return (
               <Box key={wt.path}>
-                <Text color={isSelected ? "green" : isActive ? "cyan" : undefined}>
+                <Text color={isSelected ? theme.selected : isActive ? theme.active : undefined}>
                   {cursor}
                 </Text>
-                <Text dimColor>
+                <Text color={theme.spine}>
                   {glyph}{" "}
                 </Text>
-                <Text color={isSelected ? "#88ff88" : isActive ? "#88ddff" : "white"} bold={isSelected || isActive}>
+                <Text color={isSelected ? theme.selectedText : isActive ? theme.activeText : theme.text} bold={isSelected || isActive}>
                   {branchDisplay.padEnd(40)}
                 </Text>
-                <Text dimColor>{time.padEnd(10)}</Text>
+                <Text color={theme.dim}>{time.padEnd(10)}</Text>
                 <Text color={statusColor}>{status.padEnd(8)}</Text>
-                <Text dimColor>{wt.head}  </Text>
-                <Text dimColor>{sessions}</Text>
+                <Text color={theme.dim}>{wt.head}  </Text>
+                <Text color={theme.dim}>{sessions}</Text>
               </Box>
             );
           })
