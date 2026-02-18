@@ -159,6 +159,7 @@ export default function WorktreeList({ onNavigate, onLaunch, onQuit }: WorktreeL
     );
   }
 
+  const cwd = process.cwd();
   const modeLabel = mode === "insert" ? "INSERT" : "NORMAL";
   const modeColor = mode === "insert" ? "yellow" : "blue";
 
@@ -192,6 +193,7 @@ export default function WorktreeList({ onNavigate, onLaunch, onQuit }: WorktreeL
         ) : (
           displayWorktrees.map((wt, i) => {
             const isSelected = i === selected;
+            const isActive = cwd.startsWith(wt.path);
             const last = i === displayWorktrees.length - 1;
             const first = i === 0;
             const branchDisplay = truncate(wt.branch || "(detached)", 38);
@@ -215,12 +217,24 @@ export default function WorktreeList({ onNavigate, onLaunch, onQuit }: WorktreeL
               glyph = "├──";
             }
 
+            // Cursor: ● for selected, ◆ for active, blank otherwise
+            let cursor: string;
+            if (isSelected) {
+              cursor = " ● ";
+            } else if (isActive) {
+              cursor = " ◆ ";
+            } else {
+              cursor = "   ";
+            }
+
+            const textColor = isSelected ? "green" : isActive ? "cyan" : "white";
+
             return (
               <Box key={wt.path}>
-                <Text color="green">
-                  {isSelected ? " ● " : "   "}{glyph}{" "}
+                <Text color={isActive ? "cyan" : "green"}>
+                  {cursor}{glyph}{" "}
                 </Text>
-                <Text color={isSelected ? "green" : "white"} bold={isSelected}>
+                <Text color={textColor} bold={isSelected || isActive}>
                   {branchDisplay.padEnd(40)}
                 </Text>
                 <Text dimColor>{time.padEnd(10)}</Text>
