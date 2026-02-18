@@ -241,14 +241,15 @@ export default function WorktreeList({ onNavigate, onLaunch, onQuit }: WorktreeL
               cursor = "   ";
             }
 
-            const textColor = isSelected ? "green" : isActive ? "cyan" : "white";
-
             return (
               <Box key={wt.path}>
-                <Text color={isActive ? "cyan" : "green"}>
-                  {cursor}{glyph}{" "}
+                <Text color={isSelected ? "green" : isActive ? "cyan" : undefined}>
+                  {cursor}
                 </Text>
-                <Text color={textColor} bold={isSelected || isActive}>
+                <Text dimColor>
+                  {glyph}{" "}
+                </Text>
+                <Text color={isSelected ? "#88ff88" : isActive ? "#88ddff" : "white"} bold={isSelected || isActive}>
                   {branchDisplay.padEnd(40)}
                 </Text>
                 <Text dimColor>{time.padEnd(10)}</Text>
