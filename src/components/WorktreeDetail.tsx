@@ -39,8 +39,9 @@ export default function WorktreeDetail({
       return;
     }
 
-    // +1 for the "New session" row at index 0
+    // Sessions at indices 0..n-1, "New session" at index n
     const count = sessions.length + 1;
+    const newSessionIdx = sessions.length;
 
     // Vim navigation
     if (input === "j" || key.downArrow) {
@@ -50,10 +51,10 @@ export default function WorktreeDetail({
     }
 
     if (key.return) {
-      if (selected === 0) {
+      if (selected === newSessionIdx) {
         onLaunch({ kind: "claude", cwd: worktree.path });
       } else {
-        const session = sessions[selected - 1];
+        const session = sessions[selected];
         if (session) {
           onLaunch({ kind: "claude", sessionId: session.sessionId, cwd: worktree.path });
         }
@@ -87,24 +88,17 @@ export default function WorktreeDetail({
         </Box>
       ) : (
         <Box marginTop={1} flexDirection="column">
-          <Box>
-            <Text color={selected === 0 ? "green" : "cyan"} bold>
-              {selected === 0 ? " > " : "   "}
-              + New session
-            </Text>
-          </Box>
-
           {sessions.length > 0 && (
             <>
-              <Box marginTop={1}>
-                <Text dimColor>Previous sessions ({sessions.length}):</Text>
+              <Box>
+                <Text dimColor>Sessions ({sessions.length}):</Text>
               </Box>
               <Box flexDirection="column">
                 <Box>
                   <Text dimColor>{"   Date            Summary                                    Msgs"}</Text>
                 </Box>
                 {sessions.map((s, i) => {
-                  const isSelected = i + 1 === selected;
+                  const isSelected = i === selected;
                   const prefix = isSelected ? " >" : "  ";
                   const dateStr = s.modified.toLocaleDateString("en-US", {
                     month: "short",
@@ -136,6 +130,13 @@ export default function WorktreeDetail({
               </Box>
             </>
           )}
+
+          <Box marginTop={sessions.length > 0 ? 1 : 0}>
+            <Text color={selected === sessions.length ? "green" : "cyan"} bold>
+              {selected === sessions.length ? " > " : "   "}
+              + New session
+            </Text>
+          </Box>
         </Box>
       )}
 
