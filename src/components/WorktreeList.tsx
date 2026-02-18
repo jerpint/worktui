@@ -79,15 +79,8 @@ export default function WorktreeList({ onNavigate, onLaunch, onQuit }: WorktreeL
     if (key.downArrow) { navigate("down"); return; }
     if (key.upArrow) { navigate("up"); return; }
 
-    // Enter always opens shell in worktree
-    if (key.return) {
-      const wt = displayWorktrees[selected];
-      if (wt) onLaunch({ kind: "shell", cwd: wt.path });
-      return;
-    }
-
-    // l/o opens detail view in normal mode
-    if (mode === "normal" && (input === "l" || input === "o")) {
+    // Enter/l = primary action: open detail view
+    if (key.return || (mode === "normal" && input === "l")) {
       const wt = displayWorktrees[selected];
       if (wt) onNavigate({ kind: "detail", worktree: wt });
       return;
@@ -139,6 +132,9 @@ export default function WorktreeList({ onNavigate, onLaunch, onQuit }: WorktreeL
         const idx = keys.indexOf(prev);
         return keys[(idx + 1) % keys.length];
       });
+    } else if (input === "o") {
+      const wt = displayWorktrees[selected];
+      if (wt) onLaunch({ kind: "shell", cwd: wt.path });
     } else if (input === "f") {
       onNavigate({ kind: "fetch" });
     } else if (input === "r") {
@@ -231,8 +227,8 @@ export default function WorktreeList({ onNavigate, onLaunch, onQuit }: WorktreeL
             : [
                 { key: "/", label: "filter" },
                 { key: "j/k", label: "navigate" },
-                { key: "\u23CE", label: "shell" },
-                { key: "o", label: "sessions" },
+                { key: "\u23CE", label: "open" },
+                { key: "o", label: "shell" },
                 { key: "c", label: "create" },
                 { key: "f", label: "fetch" },
                 { key: "d", label: "delete" },
