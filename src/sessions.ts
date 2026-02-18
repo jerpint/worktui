@@ -11,6 +11,14 @@ function getProjectDir(worktreePath: string): string {
   return join(CLAUDE_DIR, encoded);
 }
 
+function parseIndex(data: any): any[] | null {
+  // Format: { version: 1, entries: [...] }
+  if (data && Array.isArray(data.entries)) return data.entries;
+  // Legacy: plain array
+  if (Array.isArray(data)) return data;
+  return null;
+}
+
 export async function countSessions(worktreePath: string): Promise<number> {
   const dir = getProjectDir(worktreePath);
   if (!existsSync(dir)) return 0;
@@ -20,7 +28,8 @@ export async function countSessions(worktreePath: string): Promise<number> {
   if (existsSync(indexPath)) {
     try {
       const data = JSON.parse(await readFile(indexPath, "utf-8"));
-      if (Array.isArray(data)) return data.length;
+      const entries = parseIndex(data);
+      if (entries) return entries.length;
     } catch {}
   }
 
@@ -44,8 +53,10 @@ export async function getSessions(
   if (existsSync(indexPath)) {
     try {
       const data = JSON.parse(await readFile(indexPath, "utf-8"));
-      if (Array.isArray(data)) {
-        return data
+      const entries = parseIndex(data);
+      if (entries) {
+        return entries
+          .filter((entry: any) => entry.messageCount > 0)
           .map((entry: any) => ({
             sessionId: entry.sessionId || "",
             firstPrompt: entry.firstPrompt || "",
@@ -78,23 +89,26 @@ export async function getSessions(
         try {
           const content = await readFile(filePath, "utf-8");
           const lines = content.split("\n").filter((l) => l.trim());
-          messageCount = lines.length;
 
-          // Find first user message for prompt
-          for (const line of lines.slice(0, 20)) {
+          // Only count user/assistant messages, not file-history-snapshot etc.
+          for (const line of lines) {
             try {
               const parsed = JSON.parse(line);
-              if (parsed.role === "user" && typeof parsed.content === "string") {
-                firstPrompt = parsed.content.slice(0, 200);
-                break;
+              if (parsed.type === "user" || parsed.type === "assistant") {
+                messageCount++;
               }
-              if (parsed.role === "user" && Array.isArray(parsed.content)) {
-                const textBlock = parsed.content.find(
-                  (b: any) => b.type === "text"
-                );
-                if (textBlock) {
-                  firstPrompt = textBlock.text.slice(0, 200);
-                  break;
+              // Find first user message for prompt
+              if (!firstPrompt && parsed.type === "user" && parsed.message) {
+                const msg = parsed.message;
+                if (typeof msg.content === "string") {
+                  firstPrompt = msg.content.slice(0, 200);
+                } else if (Array.isArray(msg.content)) {
+                  const textBlock = msg.content.find(
+                    (b: any) => b.type === "text"
+                  );
+                  if (textBlock) {
+                    firstPrompt = textBlock.text.slice(0, 200);
+                  }
                 }
               }
             } catch {}
@@ -113,9 +127,9 @@ export async function getSessions(
       })
     );
 
-    return sessions.sort(
-      (a, b) => b.modified.getTime() - a.modified.getTime()
-    );
+    return sessions
+      .filter((s) => s.messageCount > 0)
+      .sort((a, b) => b.modified.getTime() - a.modified.getTime());
   } catch {
     return [];
   }
