@@ -5,6 +5,11 @@
 # To uninstall, just remove that line.
 
 wt() {
+  # If CWD no longer exists (e.g. after deleting a worktree), cd home first
+  if [ ! -d "$PWD" ]; then
+    cd ~
+  fi
+
   bun run ~/claudioscope/src/index.tsx "$@"
 
   local launch_file="/tmp/claudioscope-launch"

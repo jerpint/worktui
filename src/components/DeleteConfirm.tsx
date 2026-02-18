@@ -10,9 +10,15 @@ interface DeleteConfirmProps {
   onQuit: () => void;
 }
 
+// Rows: 0=delete branch, 1=force, 2=confirm (No/Yes)
+type Row = 0 | 1 | 2;
+
 export default function DeleteConfirm({ worktree, onBack, onQuit }: DeleteConfirmProps) {
+  const isInsideWorktree = process.cwd().startsWith(worktree.path);
   const [deleteBranchFlag, setDeleteBranchFlag] = useState(false);
   const [forceFlag, setForceFlag] = useState(false);
+  const [confirm, setConfirm] = useState(false);
+  const [row, setRow] = useState<Row>(2);
   const [deleting, setDeleting] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [success, setSuccess] = useState(false);
@@ -21,13 +27,13 @@ export default function DeleteConfirm({ worktree, onBack, onQuit }: DeleteConfir
     if (deleting) return;
 
     if (success) {
-      if (key.escape || input === "n" || key.return) {
+      if (key.escape || key.return) {
         onBack();
       }
       return;
     }
 
-    if (input === "n" || key.escape) {
+    if (key.escape || input === "h") {
       onBack();
       return;
     }
@@ -35,14 +41,44 @@ export default function DeleteConfirm({ worktree, onBack, onQuit }: DeleteConfir
       onQuit();
       return;
     }
-    if (input === "b") {
-      setDeleteBranchFlag((v) => !v);
+
+    // Vertical navigation
+    if (input === "j" || key.downArrow) {
+      setRow((r) => (r < 2 ? (r + 1) as Row : 0));
+      return;
     }
-    if (input === "f") {
-      setForceFlag((v) => !v);
+    if (input === "k" || key.upArrow) {
+      setRow((r) => (r > 0 ? (r - 1) as Row : 2));
+      return;
     }
-    if (input === "y") {
-      doDelete();
+
+    // Horizontal toggle on confirm row
+    if (row === 2 && (key.leftArrow || key.rightArrow || input === "l")) {
+      setConfirm((v) => !v);
+      return;
+    }
+
+    // Enter toggles checkboxes or confirms
+    if (key.return) {
+      if (row === 0) {
+        setDeleteBranchFlag((v) => !v);
+      } else if (row === 1) {
+        setForceFlag((v) => !v);
+      } else {
+        if (confirm) {
+          doDelete();
+        } else {
+          onBack();
+        }
+      }
+      return;
+    }
+
+    // Space also toggles
+    if (input === " ") {
+      if (row === 0) setDeleteBranchFlag((v) => !v);
+      else if (row === 1) setForceFlag((v) => !v);
+      else setConfirm((v) => !v);
     }
   });
 
@@ -62,6 +98,19 @@ export default function DeleteConfirm({ worktree, onBack, onQuit }: DeleteConfir
     setDeleting(false);
   };
 
+  if (isInsideWorktree) {
+    return (
+      <Box flexDirection="column" padding={1}>
+        <Text bold color="red">Cannot delete this worktree</Text>
+        <Box marginTop={1} flexDirection="column">
+          <Text>You are currently inside this worktree.</Text>
+          <Text>cd to a different directory first, then try again.</Text>
+        </Box>
+        <StatusBar hints={[{ key: "esc", label: "back" }]} />
+      </Box>
+    );
+  }
+
   if (success) {
     return (
       <Box flexDirection="column" padding={1}>
@@ -71,6 +120,12 @@ export default function DeleteConfirm({ worktree, onBack, onQuit }: DeleteConfir
       </Box>
     );
   }
+
+  const checkbox = (checked: boolean, focused: boolean) => {
+    const mark = checked ? "x" : " ";
+    if (focused) return <Text color="green" bold inverse>{` [${mark}] `}</Text>;
+    return <Text color={checked ? "green" : "gray"}>[{mark}]</Text>;
+  };
 
   return (
     <Box flexDirection="column" padding={1}>
@@ -89,17 +144,32 @@ export default function DeleteConfirm({ worktree, onBack, onQuit }: DeleteConfir
       </Box>
 
       <Box marginTop={1} flexDirection="column">
-        <Text>
-          <Text color={deleteBranchFlag ? "green" : "gray"}>
-            [{deleteBranchFlag ? "x" : " "}]
-          </Text>
-          {" "}Also delete local branch
+        <Box>
+          {checkbox(deleteBranchFlag, row === 0)}
+          <Text color={row === 0 ? "green" : undefined}> Also delete local branch</Text>
+        </Box>
+        <Box>
+          {checkbox(forceFlag, row === 1)}
+          <Text color={row === 1 ? "green" : undefined}> Force delete</Text>
+        </Box>
+      </Box>
+
+      <Box marginTop={1}>
+        <Text>  </Text>
+        <Text
+          color={confirm ? undefined : "red"}
+          bold={!confirm || row === 2}
+          inverse={!confirm && row === 2}
+        >
+          {" No "}
         </Text>
-        <Text>
-          <Text color={forceFlag ? "green" : "gray"}>
-            [{forceFlag ? "x" : " "}]
-          </Text>
-          {" "}Force delete
+        <Text>  </Text>
+        <Text
+          color={confirm ? "green" : undefined}
+          bold={confirm || row === 2}
+          inverse={confirm && row === 2}
+        >
+          {" Yes "}
         </Text>
       </Box>
 
@@ -117,10 +187,10 @@ export default function DeleteConfirm({ worktree, onBack, onQuit }: DeleteConfir
 
       <StatusBar
         hints={[
-          { key: "b", label: "toggle branch" },
-          { key: "f", label: "toggle force" },
-          { key: "y", label: "confirm" },
-          { key: "n", label: "cancel" },
+          { key: "j/k", label: "navigate" },
+          { key: "\u23CE/space", label: "toggle" },
+          { key: "\u2190\u2192", label: "yes/no" },
+          { key: "esc", label: "cancel" },
         ]}
       />
     </Box>
