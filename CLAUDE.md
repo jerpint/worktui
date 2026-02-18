@@ -1,4 +1,4 @@
-# Claudioscope
+# Worktui
 
 Worktree management TUI with Claude session integration.
 

@@ -1,4 +1,4 @@
-# Claudioscope Quickstart
+# Worktui Quickstart
 
 Interactive TUI for managing git worktrees + Claude sessions.
 
@@ -6,12 +6,12 @@ Interactive TUI for managing git worktrees + Claude sessions.
 
 ```bash
 # 1. Install dependencies
-cd ~/claudioscope
+cd ~/worktui
 bun install
 
 # 2. Add to your ~/.zshrc
-echo 'source ~/claudioscope/wt.sh' >> ~/.zshrc
-source ~/claudioscope/wt.sh
+echo 'source ~/worktui/wt.sh' >> ~/.zshrc
+source ~/worktui/wt.sh
 ```
 
 ## Usage
@@ -32,9 +32,11 @@ wt cleanup                    # Jump to cleanup view
 | j/k | Navigate |
 | Enter | Open worktree detail |
 | o | Open shell in worktree (cd) |
+| a | Activate worktree (cd on quit) |
 | / | Fuzzy filter (insert mode) |
 | Esc | Back to normal mode |
 | c | Create worktree |
+| f | Fetch remote branch |
 | d | Delete worktree |
 | x | Cleanup (multi-select) |
 | s | Cycle sort (date/branch/status) |
@@ -55,4 +57,4 @@ wt cleanup                    # Jump to cleanup view
 
 ## Uninstall
 
-Remove `source ~/claudioscope/wt.sh` from your `~/.zshrc`.
+Remove `source ~/worktui/wt.sh` from your `~/.zshrc`.

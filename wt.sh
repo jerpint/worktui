@@ -1,11 +1,11 @@
-# Claudioscope shell wrapper
+# Worktui shell wrapper
 # Source this file in your ~/.zshrc:
-#   source ~/claudioscope/wt.sh
+#   source ~/worktui/wt.sh
 #
 # To uninstall, just remove that line.
 
 wt() {
-  local last_wt_file="/tmp/claudioscope-last-wt"
+  local last_wt_file="/tmp/worktui-last-wt"
 
   # wt - : switch to last worktree
   if [ "$1" = "-" ]; then
@@ -30,9 +30,9 @@ wt() {
     cd ~
   fi
 
-  bun run ~/claudioscope/src/index.tsx "$@"
+  bun run ~/worktui/src/index.tsx "$@"
 
-  local launch_file="/tmp/claudioscope-launch"
+  local launch_file="/tmp/worktui-launch"
   if [ ! -f "$launch_file" ]; then
     return
   fi

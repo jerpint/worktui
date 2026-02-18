@@ -5,7 +5,7 @@ import { getGitRoot, createWorktree, createDraftPR } from "./git.js";
 import App from "./components/App.js";
 import type { LaunchTarget, View } from "./types.js";
 
-const LAUNCH_FILE = "/tmp/claudioscope-launch";
+const LAUNCH_FILE = "/tmp/worktui-launch";
 
 async function main() {
   const args = process.argv.slice(2);
