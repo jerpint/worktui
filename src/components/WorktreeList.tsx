@@ -23,6 +23,7 @@ export default function WorktreeList({ onNavigate, onLaunch, onQuit }: WorktreeL
   const [mode, setMode] = useState<Mode>("normal");
   const [filter, setFilter] = useState("");
   const [activePath, setActivePath] = useState<string | null>(null);
+  const [startCwd] = useState(() => process.cwd());
 
   const load = async () => {
     setLoading(true);
@@ -107,8 +108,10 @@ export default function WorktreeList({ onNavigate, onLaunch, onQuit }: WorktreeL
 
     // Normal mode
     if (input === "q") {
-      if (activePath) {
-        onLaunch({ kind: "shell", cwd: activePath });
+      // If CWD changed (via activate), cd there on exit
+      const currentCwd = process.cwd();
+      if (currentCwd !== startCwd) {
+        onLaunch({ kind: "shell", cwd: currentCwd });
       } else {
         onQuit();
       }
@@ -142,7 +145,10 @@ export default function WorktreeList({ onNavigate, onLaunch, onQuit }: WorktreeL
       if (wt) onLaunch({ kind: "shell", cwd: wt.path });
     } else if (input === "a") {
       const wt = displayWorktrees[selected];
-      if (wt) setActivePath(wt.path);
+      if (wt) {
+        setActivePath(wt.path);
+        try { process.chdir(wt.path); } catch {}
+      }
     } else if (input === "f") {
       onNavigate({ kind: "fetch" });
     } else if (input === "r") {
