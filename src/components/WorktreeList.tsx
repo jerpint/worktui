@@ -22,6 +22,7 @@ export default function WorktreeList({ onNavigate, onLaunch, onQuit }: WorktreeL
   const [error, setError] = useState<string | null>(null);
   const [mode, setMode] = useState<Mode>("normal");
   const [filter, setFilter] = useState("");
+  const [activePath, setActivePath] = useState<string | null>(null);
 
   const load = async () => {
     setLoading(true);
@@ -106,7 +107,11 @@ export default function WorktreeList({ onNavigate, onLaunch, onQuit }: WorktreeL
 
     // Normal mode
     if (input === "q") {
-      onQuit();
+      if (activePath) {
+        onLaunch({ kind: "shell", cwd: activePath });
+      } else {
+        onQuit();
+      }
       return;
     }
     if (input === "/" || input === "i") {
@@ -135,6 +140,9 @@ export default function WorktreeList({ onNavigate, onLaunch, onQuit }: WorktreeL
     } else if (input === "o") {
       const wt = displayWorktrees[selected];
       if (wt) onLaunch({ kind: "shell", cwd: wt.path });
+    } else if (input === "a") {
+      const wt = displayWorktrees[selected];
+      if (wt) setActivePath(wt.path);
     } else if (input === "f") {
       onNavigate({ kind: "fetch" });
     } else if (input === "r") {
@@ -193,7 +201,7 @@ export default function WorktreeList({ onNavigate, onLaunch, onQuit }: WorktreeL
         ) : (
           displayWorktrees.map((wt, i) => {
             const isSelected = i === selected;
-            const isActive = cwd.startsWith(wt.path);
+            const isActive = activePath ? wt.path === activePath : cwd.startsWith(wt.path);
             const last = i === displayWorktrees.length - 1;
             const first = i === 0;
             const branchDisplay = truncate(wt.branch || "(detached)", 38);
@@ -259,6 +267,7 @@ export default function WorktreeList({ onNavigate, onLaunch, onQuit }: WorktreeL
                 { key: "/", label: "filter" },
                 { key: "j/k", label: "navigate" },
                 { key: "\u23CE", label: "open" },
+                { key: "a", label: "activate" },
                 { key: "o", label: "shell" },
                 { key: "c", label: "create" },
                 { key: "f", label: "fetch" },
