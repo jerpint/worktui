@@ -103,23 +103,25 @@ export async function listWorktrees(gitRoot: string): Promise<Worktree[]> {
   const raw = parsePorcelain(stdout);
 
   const worktrees = await Promise.all(
-    raw.map(async (r) => {
-      const [dirty, commit, sessions] = await Promise.all([
-        isDirty(r.path),
-        getCommitInfo(r.path, r.head),
-        countSessions(r.path),
-      ]);
-      return {
-        path: r.path,
-        branch: r.branch,
-        head: r.head,
-        commitSubject: commit.subject,
-        commitDate: commit.date,
-        isDirty: dirty,
-        isMain: r.isMain,
-        sessionCount: sessions,
-      } satisfies Worktree;
-    })
+    raw
+      .filter((r) => existsSync(r.path))
+      .map(async (r) => {
+        const [dirty, commit, sessions] = await Promise.all([
+          isDirty(r.path),
+          getCommitInfo(r.path, r.head),
+          countSessions(r.path),
+        ]);
+        return {
+          path: r.path,
+          branch: r.branch,
+          head: r.head,
+          commitSubject: commit.subject,
+          commitDate: commit.date,
+          isDirty: dirty,
+          isMain: r.isMain,
+          sessionCount: sessions,
+        } satisfies Worktree;
+      })
   );
 
   return worktrees;
