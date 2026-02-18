@@ -164,11 +164,17 @@ export default function WorktreeList({ onNavigate, onLaunch, onQuit }: WorktreeL
 
   return (
     <Box flexDirection="column" padding={1}>
-      <Box>
-        <Text bold color="cyan">
-          Worktrees ({displayWorktrees.length}{filter ? `/${worktrees.length}` : ""})
+      <Box flexDirection="column">
+        <Box><Text color="green">{"        _   "}</Text></Box>
+        <Box><Text color="green">{"  _ _ _| |_ "}</Text><Text dimColor>  git worktree manager</Text></Box>
+        <Box><Text color="green">{" | | | |  _|"}</Text></Box>
+        <Box><Text color="green">{" |_____|_|  "}</Text></Box>
+      </Box>
+      <Box marginTop={1}>
+        <Text dimColor>
+          {displayWorktrees.length}{filter ? `/${worktrees.length}` : ""} worktrees
+          {"  "}sorted by: {sortBy}{"  "}
         </Text>
-        <Text dimColor>{"  sorted by: " + sortBy + "  "}</Text>
         <Text color={modeColor} bold>-- {modeLabel} --</Text>
       </Box>
 
@@ -186,7 +192,8 @@ export default function WorktreeList({ onNavigate, onLaunch, onQuit }: WorktreeL
         ) : (
           displayWorktrees.map((wt, i) => {
             const isSelected = i === selected;
-            const prefix = isSelected ? ">" : " ";
+            const last = i === displayWorktrees.length - 1;
+            const first = i === 0;
             const branchDisplay = truncate(wt.branch || "(detached)", 38);
             const time = relativeTime(wt.commitDate);
             const status = wt.isDirty ? "DIRTY" : "clean";
@@ -195,21 +202,31 @@ export default function WorktreeList({ onNavigate, onLaunch, onQuit }: WorktreeL
               wt.sessionCount > 0
                 ? `${wt.sessionCount} session${wt.sessionCount > 1 ? "s" : ""}`
                 : "\u2014";
-            const mainTag = wt.isMain ? " [main]" : "";
+
+            // Git branch diagram prefix
+            let glyph: string;
+            if (first && last) {
+              glyph = "───";
+            } else if (first) {
+              glyph = "┌──";
+            } else if (last) {
+              glyph = "└──";
+            } else {
+              glyph = "├──";
+            }
 
             return (
               <Box key={wt.path}>
-                <Text color={isSelected ? "green" : undefined} bold={isSelected}>
-                  {prefix}{" "}
+                <Text color="green">
+                  {isSelected ? " ● " : "   "}{glyph}{" "}
                 </Text>
-                <Text color={isSelected ? "green" : "white"}>
+                <Text color={isSelected ? "green" : "white"} bold={isSelected}>
                   {branchDisplay.padEnd(40)}
                 </Text>
                 <Text dimColor>{time.padEnd(10)}</Text>
                 <Text color={statusColor}>{status.padEnd(8)}</Text>
                 <Text dimColor>{wt.head}  </Text>
                 <Text dimColor>{sessions}</Text>
-                <Text color="yellow">{mainTag}</Text>
               </Box>
             );
           })
