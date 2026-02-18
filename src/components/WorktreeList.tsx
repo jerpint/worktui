@@ -2,6 +2,7 @@ import { Box, Text, useInput } from "ink";
 import { useState, useEffect, useMemo } from "react";
 import type { Worktree, View, LaunchTarget } from "../types.js";
 import { listWorktrees, getGitRoot } from "../git.js";
+import { getSessions } from "../sessions.js";
 import { relativeTime, truncate, fuzzyMatch } from "../utils.js";
 import StatusBar from "./StatusBar.js";
 import { theme } from "../theme.js";
@@ -153,7 +154,14 @@ export default function WorktreeList({ onNavigate, onLaunch, onQuit }: WorktreeL
     } else if (input === "f") {
       onNavigate({ kind: "fetch" });
     } else if (input === "r") {
-      load();
+      const wt = displayWorktrees[selected];
+      if (wt) {
+        getSessions(wt.path).then((sessions) => {
+          if (sessions.length > 0) {
+            onLaunch({ kind: "claude", sessionId: sessions[0].sessionId, cwd: wt.path });
+          }
+        });
+      }
     }
   });
 
@@ -282,7 +290,7 @@ export default function WorktreeList({ onNavigate, onLaunch, onQuit }: WorktreeL
                 { key: "d", label: "delete" },
                 { key: "x", label: "cleanup" },
                 { key: "s", label: "sort" },
-                { key: "r", label: "refresh" },
+                { key: "r", label: "resume" },
                 { key: "q", label: "quit" },
               ]
         }
