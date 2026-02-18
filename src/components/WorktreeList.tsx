@@ -167,7 +167,7 @@ export default function WorktreeList({ onNavigate, onLaunch, onQuit }: WorktreeL
     <Box flexDirection="column" padding={1}>
       <Box flexDirection="column">
         <Box><Text color="green">{"        _   "}</Text></Box>
-        <Box><Text color="green">{"  _ _ _| |_ "}</Text><Text dimColor>  git worktree manager</Text></Box>
+        <Box><Text color="green">{"  _ _ _| |_ "}</Text><Text bold> worktui</Text></Box>
         <Box><Text color="green">{" | | | |  _|"}</Text></Box>
         <Box><Text color="green">{" |_____|_|  "}</Text></Box>
       </Box>
