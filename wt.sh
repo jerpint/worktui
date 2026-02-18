@@ -5,6 +5,26 @@
 # To uninstall, just remove that line.
 
 wt() {
+  local last_wt_file="/tmp/claudioscope-last-wt"
+
+  # wt - : switch to last worktree
+  if [ "$1" = "-" ]; then
+    if [ -f "$last_wt_file" ]; then
+      local prev=$(cat "$last_wt_file")
+      if [ -d "$prev" ]; then
+        echo "$PWD" > "$last_wt_file"
+        cd "$prev"
+      else
+        echo "Last worktree no longer exists: $prev"
+        return 1
+      fi
+    else
+      echo "No previous worktree"
+      return 1
+    fi
+    return
+  fi
+
   # If CWD no longer exists (e.g. after deleting a worktree), cd home first
   if [ ! -d "$PWD" ]; then
     cd ~
@@ -27,6 +47,7 @@ wt() {
   cwd="${cwd%%\"*}"
 
   if [ "$kind" = "shell" ]; then
+    echo "$PWD" > "$last_wt_file"
     cd "$cwd"
   elif [ "$kind" = "claude" ]; then
     local session_id=""
@@ -35,6 +56,7 @@ wt() {
       session_id="${session_id%%\"*}"
     fi
 
+    echo "$PWD" > "$last_wt_file"
     cd "$cwd"
     if [ -n "$session_id" ]; then
       claude --resume "$session_id"
