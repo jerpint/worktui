@@ -1,9 +1,9 @@
 import { Box, Text, useInput } from "ink";
 import { useState, useEffect, useMemo } from "react";
 import type { Worktree, View, LaunchTarget } from "../types.js";
-import { listWorktrees, getGitRoot } from "../git.js";
+import { listWorktrees, getGitRoot, createWorktree } from "../git.js";
 import { getSessions } from "../sessions.js";
-import { relativeTime, truncate, fuzzyMatch } from "../utils.js";
+import { relativeTime, truncate, fuzzyMatch, branchToFolder } from "../utils.js";
 import StatusBar from "./StatusBar.js";
 import { theme } from "../theme.js";
 
@@ -26,6 +26,7 @@ export default function WorktreeList({ onNavigate, onLaunch, onQuit }: WorktreeL
   const [filter, setFilter] = useState("");
   const [activePath, setActivePath] = useState<string | null>(null);
   const [startCwd] = useState(() => process.cwd());
+  const [creating, setCreating] = useState(false);
 
   const load = async () => {
     setLoading(true);
@@ -78,21 +79,63 @@ export default function WorktreeList({ onNavigate, onLaunch, onQuit }: WorktreeL
     }
   };
 
-  useInput((input, key) => {
-    // Arrow keys always navigate, regardless of mode
-    if (key.downArrow) { navigate("down"); return; }
-    if (key.upArrow) { navigate("up"); return; }
+  const selectedWorktree = displayWorktrees[selected] ?? null;
 
-    // Enter/l = primary action: open detail view
-    if (key.return || (mode === "normal" && input === "l")) {
-      const wt = displayWorktrees[selected];
-      if (wt) onNavigate({ kind: "detail", worktree: wt });
+  // Check if filter text exactly matches an existing branch
+  const exactMatch = filter && worktrees.some((wt) => wt.branch === filter);
+  const canCreate = filter.trim().length > 0 && !exactMatch;
+
+  const doCreate = async () => {
+    const branch = filter.trim();
+    if (!branch || creating) return;
+    setCreating(true);
+    try {
+      const gitRoot = await getGitRoot();
+      const path = await createWorktree(gitRoot, branch);
+      setFilter("");
+      setMode("normal");
+      onLaunch({ kind: "shell", cwd: path });
+    } catch (err: any) {
+      setError((err as Error).message);
+      setCreating(false);
+    }
+  };
+
+  useInput((input, key) => {
+    if (creating) return;
+
+    // Arrow keys always navigate
+    if (key.downArrow) {
+      if (mode === "insert") {
+        setMode("normal");
+      } else {
+        navigate("down");
+      }
+      return;
+    }
+    if (key.upArrow) {
+      if (mode === "normal" && selected === 0) {
+        setMode("insert");
+      } else if (mode === "normal") {
+        navigate("up");
+      }
       return;
     }
 
     if (mode === "insert") {
       if (key.escape) {
         setMode("normal");
+        return;
+      }
+      if (key.return) {
+        if (canCreate) {
+          // Typed text is not an existing branch — create new worktree
+          doCreate();
+        } else if (displayWorktrees.length > 0) {
+          // Exact match or no filter — open selected worktree
+          const wt = displayWorktrees[selected];
+          if (wt) onNavigate({ kind: "detail", worktree: wt });
+        }
         return;
       }
       if (key.backspace || key.delete) {
@@ -109,8 +152,13 @@ export default function WorktreeList({ onNavigate, onLaunch, onQuit }: WorktreeL
     }
 
     // Normal mode
+    // Enter/l = primary action: open detail view
+    if (key.return || input === "l") {
+      if (selectedWorktree) onNavigate({ kind: "detail", worktree: selectedWorktree });
+      return;
+    }
+
     if (input === "q") {
-      // If CWD changed (via activate), cd there on exit
       const currentCwd = process.cwd();
       if (currentCwd !== startCwd) {
         onLaunch({ kind: "shell", cwd: currentCwd });
@@ -119,21 +167,27 @@ export default function WorktreeList({ onNavigate, onLaunch, onQuit }: WorktreeL
       }
       return;
     }
-    if (input === "/" || input === "i") {
+    if (input === "/" || input === "i" || input === "n") {
       setMode("insert");
       return;
     }
 
     // Vim nav
     if (input === "j") { navigate("down"); return; }
-    if (input === "k") { navigate("up"); return; }
+    if (input === "k") {
+      if (selected === 0) {
+        setMode("insert");
+      } else {
+        navigate("up");
+      }
+      return;
+    }
 
     // Actions
-    if (input === "n") {
-      onNavigate({ kind: "create" });
-    } else if (input === "d") {
-      const wt = displayWorktrees[selected];
-      if (wt && !wt.isMain) onNavigate({ kind: "delete", worktree: wt });
+    if (input === "d") {
+      if (selectedWorktree && !selectedWorktree.isMain) {
+        onNavigate({ kind: "delete", worktree: selectedWorktree });
+      }
     } else if (input === "x") {
       onNavigate({ kind: "cleanup" });
     } else if (input === "s") {
@@ -143,22 +197,19 @@ export default function WorktreeList({ onNavigate, onLaunch, onQuit }: WorktreeL
         return keys[(idx + 1) % keys.length];
       });
     } else if (input === "o") {
-      const wt = displayWorktrees[selected];
-      if (wt) onLaunch({ kind: "shell", cwd: wt.path });
+      if (selectedWorktree) onLaunch({ kind: "shell", cwd: selectedWorktree.path });
     } else if (input === "a") {
-      const wt = displayWorktrees[selected];
-      if (wt) {
-        setActivePath(wt.path);
-        try { process.chdir(wt.path); } catch {}
+      if (selectedWorktree) {
+        setActivePath(selectedWorktree.path);
+        try { process.chdir(selectedWorktree.path); } catch {}
       }
     } else if (input === "f") {
       onNavigate({ kind: "fetch" });
     } else if (input === "r") {
-      const wt = displayWorktrees[selected];
-      if (wt) {
-        getSessions(wt.path).then((sessions) => {
+      if (selectedWorktree) {
+        getSessions(selectedWorktree.path).then((sessions) => {
           if (sessions.length > 0) {
-            onLaunch({ kind: "claude", sessionId: sessions[0].sessionId, cwd: wt.path });
+            onLaunch({ kind: "claude", sessionId: sessions[0].sessionId, cwd: selectedWorktree.path });
           }
         });
       }
@@ -202,16 +253,22 @@ export default function WorktreeList({ onNavigate, onLaunch, onQuit }: WorktreeL
         <Text color={modeColor} bold>-- {modeLabel} --</Text>
       </Box>
 
+      {/* Filter / create bar */}
       <Box marginTop={1}>
         <Text color={mode === "insert" ? theme.modeInsert : theme.dim}>{"> "}</Text>
         <Text color={theme.text}>{filter}</Text>
         {mode === "insert" && <Text color={theme.modeInsert}>|</Text>}
+        {mode === "insert" && canCreate && !creating && (
+          <Text color={theme.dim}> {"\u2192"} worktrees/{branchToFolder(filter)} (enter to create)</Text>
+        )}
+        {creating && <Text color={theme.modeInsert}> Creating...</Text>}
       </Box>
 
+      {/* Worktree list */}
       <Box flexDirection="column">
         {displayWorktrees.length === 0 ? (
           <Text color={theme.dim}>
-            {filter ? "No matches." : "No worktrees found. Press c to create one."}
+            {filter ? "No matches." : "No worktrees found."}
           </Text>
         ) : (
           displayWorktrees.map((wt, i) => {
@@ -271,12 +328,18 @@ export default function WorktreeList({ onNavigate, onLaunch, onQuit }: WorktreeL
       </Box>
 
       <Box marginTop={1} height={1}>
-        <Text color={theme.dim}>{" claude: "}</Text>
-        <Text color={theme.dim} italic>
-          {displayWorktrees[selected]?.lastSessionSummary
-            ? truncate(displayWorktrees[selected].lastSessionSummary, 60)
-            : "\u2014"}
-        </Text>
+        {mode !== "insert" && selectedWorktree ? (
+          <>
+            <Text color={theme.dim}>{" claude: "}</Text>
+            <Text color={theme.dim} italic>
+              {selectedWorktree.lastSessionSummary
+                ? truncate(selectedWorktree.lastSessionSummary, 60)
+                : "\u2014"}
+            </Text>
+          </>
+        ) : (
+          <Text color={theme.dim}>{" "}</Text>
+        )}
       </Box>
 
       <StatusBar
@@ -284,16 +347,15 @@ export default function WorktreeList({ onNavigate, onLaunch, onQuit }: WorktreeL
           mode === "insert"
             ? [
                 { key: "\u2191\u2193", label: "navigate" },
-                { key: "\u23CE", label: "open" },
+                { key: "\u23CE", label: canCreate ? "create" : "open" },
                 { key: "esc", label: "normal mode" },
               ]
             : [
-                { key: "/", label: "filter" },
+                { key: "/k", label: "filter/create" },
                 { key: "j/k", label: "navigate" },
                 { key: "\u23CE", label: "open" },
                 { key: "a", label: "activate" },
                 { key: "o", label: "shell" },
-                { key: "n", label: "new" },
                 { key: "f", label: "fetch" },
                 { key: "d", label: "delete" },
                 { key: "x", label: "cleanup" },
