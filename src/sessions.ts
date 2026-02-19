@@ -19,9 +19,14 @@ function parseIndex(data: any): any[] | null {
   return null;
 }
 
-export async function countSessions(worktreePath: string): Promise<number> {
+export interface SessionInfo {
+  count: number;
+  lastSummary: string;
+}
+
+export async function getSessionInfo(worktreePath: string): Promise<SessionInfo> {
   const dir = getProjectDir(worktreePath);
-  if (!existsSync(dir)) return 0;
+  if (!existsSync(dir)) return { count: 0, lastSummary: "" };
 
   // Fast path: check sessions-index.json
   const indexPath = join(dir, "sessions-index.json");
@@ -29,16 +34,61 @@ export async function countSessions(worktreePath: string): Promise<number> {
     try {
       const data = JSON.parse(await readFile(indexPath, "utf-8"));
       const entries = parseIndex(data);
-      if (entries) return entries.length;
+      if (entries) {
+        const valid = entries
+          .filter((e: any) => e.messageCount > 0)
+          .sort((a: any, b: any) =>
+            new Date(b.modified || 0).getTime() - new Date(a.modified || 0).getTime()
+          );
+        return {
+          count: valid.length,
+          lastSummary: valid[0]?.summary || valid[0]?.firstPrompt || "",
+        };
+      }
     } catch {}
   }
 
-  // Fallback: count .jsonl files
+  // Fallback: read .jsonl files
   try {
-    const files = readdirSync(dir);
-    return files.filter((f) => f.endsWith(".jsonl")).length;
+    const files = readdirSync(dir).filter((f) => f.endsWith(".jsonl"));
+    if (files.length === 0) return { count: 0, lastSummary: "" };
+
+    // Find the most recently modified file
+    let newest = files[0];
+    let newestMtime = 0;
+    for (const f of files) {
+      const mtime = statSync(join(dir, f)).mtimeMs;
+      if (mtime > newestMtime) {
+        newestMtime = mtime;
+        newest = f;
+      }
+    }
+
+    // Extract first user prompt from newest session
+    let lastSummary = "";
+    try {
+      const content = await readFile(join(dir, newest), "utf-8");
+      for (const line of content.split("\n")) {
+        if (!line.trim()) continue;
+        try {
+          const parsed = JSON.parse(line);
+          if (parsed.type === "user" && parsed.message) {
+            const msg = parsed.message;
+            if (typeof msg.content === "string") {
+              lastSummary = msg.content.slice(0, 200);
+            } else if (Array.isArray(msg.content)) {
+              const textBlock = msg.content.find((b: any) => b.type === "text");
+              if (textBlock) lastSummary = textBlock.text.slice(0, 200);
+            }
+            break;
+          }
+        } catch {}
+      }
+    } catch {}
+
+    return { count: files.length, lastSummary };
   } catch {
-    return 0;
+    return { count: 0, lastSummary: "" };
   }
 }
 

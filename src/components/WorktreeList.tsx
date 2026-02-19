@@ -129,7 +129,7 @@ export default function WorktreeList({ onNavigate, onLaunch, onQuit }: WorktreeL
     if (input === "k") { navigate("up"); return; }
 
     // Actions
-    if (input === "c") {
+    if (input === "n") {
       onNavigate({ kind: "create" });
     } else if (input === "d") {
       const wt = displayWorktrees[selected];
@@ -263,12 +263,20 @@ export default function WorktreeList({ onNavigate, onLaunch, onQuit }: WorktreeL
                 </Text>
                 <Text color={theme.dim}>{time.padEnd(10)}</Text>
                 <Text color={statusColor}>{status.padEnd(8)}</Text>
-                <Text color={theme.dim}>{wt.head}  </Text>
                 <Text color={theme.dim}>{sessions}</Text>
               </Box>
             );
           })
         )}
+      </Box>
+
+      <Box marginTop={1} height={1}>
+        <Text color={theme.dim}>{" claude: "}</Text>
+        <Text color={theme.dim} italic>
+          {displayWorktrees[selected]?.lastSessionSummary
+            ? truncate(displayWorktrees[selected].lastSessionSummary, 60)
+            : "\u2014"}
+        </Text>
       </Box>
 
       <StatusBar
@@ -285,7 +293,7 @@ export default function WorktreeList({ onNavigate, onLaunch, onQuit }: WorktreeL
                 { key: "\u23CE", label: "open" },
                 { key: "a", label: "activate" },
                 { key: "o", label: "shell" },
-                { key: "c", label: "create" },
+                { key: "n", label: "new" },
                 { key: "f", label: "fetch" },
                 { key: "d", label: "delete" },
                 { key: "x", label: "cleanup" },

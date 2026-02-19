@@ -1,6 +1,6 @@
 import { branchToFolder } from "./utils.js";
 import type { Worktree } from "./types.js";
-import { countSessions } from "./sessions.js";
+import { getSessionInfo } from "./sessions.js";
 import { join, resolve } from "path";
 import { existsSync, copyFileSync, mkdirSync } from "fs";
 
@@ -106,10 +106,10 @@ export async function listWorktrees(gitRoot: string): Promise<Worktree[]> {
     raw
       .filter((r) => existsSync(r.path))
       .map(async (r) => {
-        const [dirty, commit, sessions] = await Promise.all([
+        const [dirty, commit, sessionInfo] = await Promise.all([
           isDirty(r.path),
           getCommitInfo(r.path, r.head),
-          countSessions(r.path),
+          getSessionInfo(r.path),
         ]);
         return {
           path: r.path,
@@ -119,7 +119,8 @@ export async function listWorktrees(gitRoot: string): Promise<Worktree[]> {
           commitDate: commit.date,
           isDirty: dirty,
           isMain: r.isMain,
-          sessionCount: sessions,
+          sessionCount: sessionInfo.count,
+          lastSessionSummary: sessionInfo.lastSummary,
         } satisfies Worktree;
       })
   );

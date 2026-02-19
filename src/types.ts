@@ -7,6 +7,7 @@ export interface Worktree {
   isDirty: boolean;
   isMain: boolean;
   sessionCount: number;
+  lastSessionSummary: string;
 }
 
 export interface ClaudeSession {
