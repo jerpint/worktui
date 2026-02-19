@@ -223,19 +223,36 @@ export async function fetchRemote(gitRoot: string): Promise<void> {
   if (exitCode !== 0) throw new Error(`Failed to fetch: ${stderr}`);
 }
 
+export interface RemoteBranch {
+  name: string;
+  author: string;
+  date: Date;
+}
+
 export async function listRemoteBranches(
   gitRoot: string,
   localBranches: Set<string>
-): Promise<string[]> {
+): Promise<RemoteBranch[]> {
   const { stdout } = await run(
-    ["git", "branch", "-r", "--format=%(refname:short)"],
+    [
+      "git", "branch", "-r",
+      "--format=%(refname:short)\t%(authorname)\t%(committerdate:iso)",
+      "--sort=-committerdate",
+    ],
     gitRoot
   );
   return stdout
     .split("\n")
-    .filter((b) => b && !b.includes("->")) // skip HEAD -> origin/main
-    .map((b) => b.replace(/^origin\//, ""))
-    .filter((b) => !localBranches.has(b));
+    .filter((line) => line && !line.includes("->"))
+    .map((line) => {
+      const [ref, author, dateStr] = line.split("\t");
+      return {
+        name: ref.replace(/^origin\//, ""),
+        author: author || "",
+        date: dateStr ? new Date(dateStr) : new Date(),
+      };
+    })
+    .filter((b) => !localBranches.has(b.name));
 }
 
 export async function createDraftPR(

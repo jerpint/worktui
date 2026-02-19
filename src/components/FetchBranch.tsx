@@ -1,9 +1,11 @@
 import { Box, Text, useInput } from "ink";
 import { useState, useEffect, useMemo } from "react";
-import type { View, LaunchTarget } from "../types.js";
+import type { LaunchTarget } from "../types.js";
 import { getGitRoot, fetchRemote, listRemoteBranches, listWorktrees, createWorktree } from "../git.js";
-import { fuzzyMatch, truncate } from "../utils.js";
+import type { RemoteBranch } from "../git.js";
+import { fuzzyMatch, truncate, relativeTime } from "../utils.js";
 import StatusBar from "./StatusBar.js";
+import { theme } from "../theme.js";
 
 type Mode = "insert" | "normal";
 
@@ -14,7 +16,7 @@ interface FetchBranchProps {
 }
 
 export default function FetchBranch({ onBack, onQuit, onLaunch }: FetchBranchProps) {
-  const [branches, setBranches] = useState<string[]>([]);
+  const [branches, setBranches] = useState<RemoteBranch[]>([]);
   const [selected, setSelected] = useState(0);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
@@ -41,7 +43,7 @@ export default function FetchBranch({ onBack, onQuit, onLaunch }: FetchBranchPro
   const displayBranches = useMemo(() => {
     if (!filter) return branches;
     return branches
-      .map((b) => ({ b, score: fuzzyMatch(filter, b) }))
+      .map((b) => ({ b, score: fuzzyMatch(filter, b.name) }))
       .filter((x) => x.score >= 0)
       .sort((a, b) => a.score - b.score)
       .map((x) => x.b);
@@ -83,7 +85,7 @@ export default function FetchBranch({ onBack, onQuit, onLaunch }: FetchBranchPro
 
     if (key.return) {
       const branch = displayBranches[selected];
-      if (branch) checkoutBranch(branch);
+      if (branch) checkoutBranch(branch.name);
       return;
     }
 
@@ -112,7 +114,7 @@ export default function FetchBranch({ onBack, onQuit, onLaunch }: FetchBranchPro
     if (input === "k") { navigate("up"); return; }
     if (input === "l") {
       const branch = displayBranches[selected];
-      if (branch) checkoutBranch(branch);
+      if (branch) checkoutBranch(branch.name);
     }
   });
 
@@ -127,8 +129,8 @@ export default function FetchBranch({ onBack, onQuit, onLaunch }: FetchBranchPro
   if (error) {
     return (
       <Box flexDirection="column" padding={1}>
-        <Text color="red">Error: {error}</Text>
-        <Text dimColor>Press esc to go back.</Text>
+        <Text color={theme.error}>Error: {error}</Text>
+        <Text color={theme.dim}>Press esc to go back.</Text>
       </Box>
     );
   }
@@ -136,18 +138,18 @@ export default function FetchBranch({ onBack, onQuit, onLaunch }: FetchBranchPro
   if (creating) {
     return (
       <Box flexDirection="column" padding={1}>
-        <Text>Creating worktree for <Text color="green" bold>{creating}</Text>...</Text>
+        <Text>Creating worktree for <Text color={theme.selected} bold>{creating}</Text>...</Text>
       </Box>
     );
   }
 
   const modeLabel = mode === "insert" ? "INSERT" : "NORMAL";
-  const modeColor = mode === "insert" ? "yellow" : "blue";
+  const modeColor = mode === "insert" ? theme.modeInsert : theme.modeNormal;
 
   return (
     <Box flexDirection="column" padding={1}>
       <Box>
-        <Text bold color="cyan">
+        <Text bold color={theme.accent}>
           Remote Branches ({displayBranches.length}{filter ? `/${branches.length}` : ""})
         </Text>
         <Text>{"  "}</Text>
@@ -155,34 +157,37 @@ export default function FetchBranch({ onBack, onQuit, onLaunch }: FetchBranchPro
       </Box>
 
       <Box marginTop={1}>
-        <Text color={mode === "insert" ? "yellow" : "gray"}>{"> "}</Text>
-        <Text>{filter}</Text>
-        {mode === "insert" && <Text color="yellow">|</Text>}
+        <Text color={mode === "insert" ? theme.modeInsert : theme.dim}>{"> "}</Text>
+        <Text color={theme.text}>{filter}</Text>
+        {mode === "insert" && <Text color={theme.modeInsert}>|</Text>}
       </Box>
 
       <Box flexDirection="column">
         {displayBranches.length === 0 ? (
-          <Text dimColor>
+          <Text color={theme.dim}>
             {filter ? "No matches." : "No remote branches without local worktrees."}
           </Text>
         ) : (
           displayBranches.slice(0, 20).map((branch, i) => {
             const isSelected = i === selected;
-            const prefix = isSelected ? ">" : " ";
+            const prefix = isSelected ? " ● " : "   ";
+            const time = relativeTime(branch.date);
             return (
-              <Box key={branch}>
-                <Text color={isSelected ? "green" : undefined} bold={isSelected}>
-                  {prefix}{" "}
+              <Box key={branch.name}>
+                <Text color={isSelected ? theme.selected : undefined}>
+                  {prefix}
                 </Text>
-                <Text color={isSelected ? "green" : "white"}>
-                  {truncate(branch, 70)}
+                <Text color={isSelected ? theme.selectedText : theme.text} bold={isSelected}>
+                  {truncate(branch.name, 45).padEnd(47)}
                 </Text>
+                <Text color={theme.dim}>{time.padEnd(10)}</Text>
+                <Text color={theme.dim}>{truncate(branch.author, 15)}</Text>
               </Box>
             );
           })
         )}
         {displayBranches.length > 20 && (
-          <Text dimColor>  ... and {displayBranches.length - 20} more (use filter to narrow)</Text>
+          <Text color={theme.dim}>  ... and {displayBranches.length - 20} more (use filter to narrow)</Text>
         )}
       </Box>
 
