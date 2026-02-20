@@ -1,4 +1,4 @@
-import { branchToFolder } from "./utils.js";
+import { branchToFolder, getWorktreeBase } from "./utils.js";
 import type { Worktree } from "./types.js";
 import { getSessionInfo } from "./sessions.js";
 import { basename, join, resolve } from "path";
@@ -133,9 +133,7 @@ export async function createWorktree(
   branch: string
 ): Promise<string> {
   const folderName = branchToFolder(branch);
-  const base =
-    process.env.WORKTUI_DIR || join(process.env.HOME || "~", ".worktrees");
-  const worktreesDir = join(base, basename(gitRoot));
+  const worktreesDir = join(getWorktreeBase(), basename(gitRoot));
   const worktreePath = join(worktreesDir, folderName);
 
   // Check if worktree already exists

@@ -4,10 +4,11 @@ import type { Worktree, View, LaunchTarget } from "../types.js";
 import { listWorktrees, getGitRoot, createWorktree, getPRUrl, getRepoUrl } from "../git.js";
 import { getSessions } from "../sessions.js";
 import { relativeTime, truncate, fuzzyMatch, branchToFolder } from "../utils.js";
+import { getAccessTimes, recordAccess } from "../access.js";
 import StatusBar from "./StatusBar.js";
 import { theme } from "../theme.js";
 
-type SortKey = "date" | "branch" | "status";
+type SortKey = "recent" | "date" | "branch" | "status";
 type Mode = "insert" | "normal";
 
 interface WorktreeListProps {
@@ -19,7 +20,7 @@ interface WorktreeListProps {
 export default function WorktreeList({ onNavigate, onLaunch, onQuit }: WorktreeListProps) {
   const [worktrees, setWorktrees] = useState<Worktree[]>([]);
   const [selected, setSelected] = useState(0);
-  const [sortBy, setSortBy] = useState<SortKey>("date");
+  const [sortBy, setSortBy] = useState<SortKey>("recent");
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
   const [mode, setMode] = useState<Mode>("normal");
@@ -33,6 +34,11 @@ export default function WorktreeList({ onNavigate, onLaunch, onQuit }: WorktreeL
     try {
       const root = await getGitRoot();
       const wts = await listWorktrees(root);
+      const accessTimes = getAccessTimes();
+      for (const wt of wts) {
+        const ts = accessTimes[wt.path];
+        if (ts) wt.lastAccessed = new Date(ts);
+      }
       setWorktrees(wts);
       setError(null);
     } catch (err: any) {
@@ -47,6 +53,12 @@ export default function WorktreeList({ onNavigate, onLaunch, onQuit }: WorktreeL
 
   const sorted = useMemo(() => {
     return [...worktrees].sort((a, b) => {
+      if (sortBy === "recent") {
+        const aTime = a.lastAccessed?.getTime() ?? 0;
+        const bTime = b.lastAccessed?.getTime() ?? 0;
+        if (aTime !== bTime) return bTime - aTime;
+        return b.commitDate.getTime() - a.commitDate.getTime();
+      }
       if (sortBy === "date") return b.commitDate.getTime() - a.commitDate.getTime();
       if (sortBy === "branch") return a.branch.localeCompare(b.branch);
       return (b.isDirty ? 1 : 0) - (a.isDirty ? 1 : 0);
@@ -192,7 +204,7 @@ export default function WorktreeList({ onNavigate, onLaunch, onQuit }: WorktreeL
       onNavigate({ kind: "cleanup" });
     } else if (input === "s") {
       setSortBy((prev) => {
-        const keys: SortKey[] = ["date", "branch", "status"];
+        const keys: SortKey[] = ["recent", "date", "branch", "status"];
         const idx = keys.indexOf(prev);
         return keys[(idx + 1) % keys.length];
       });
@@ -200,6 +212,7 @@ export default function WorktreeList({ onNavigate, onLaunch, onQuit }: WorktreeL
       if (selectedWorktree) onLaunch({ kind: "shell", cwd: selectedWorktree.path });
     } else if (input === "a") {
       if (selectedWorktree) {
+        recordAccess(selectedWorktree.path);
         setActivePath(selectedWorktree.path);
         try { process.chdir(selectedWorktree.path); } catch {}
       }

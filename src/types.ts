@@ -8,6 +8,7 @@ export interface Worktree {
   isMain: boolean;
   sessionCount: number;
   lastSessionSummary: string;
+  lastAccessed?: Date;
 }
 
 export interface ClaudeSession {

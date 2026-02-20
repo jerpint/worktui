@@ -50,7 +50,7 @@ worktree cleanup                  # Launch TUI directly into cleanup view
 ## Design Principles
 
 - **Two modes** — CLI mode (`-b`) for scripting, TUI mode for interactive use
-- **Repo-agnostic** — detects git root from CWD, worktrees live in `~/.worktrees/<project>/` (override with `WORKTUI_DIR`)
+- **Repo-agnostic** — detects git root from CWD, worktrees live in `~/.worktui/<project>/` (override with `WORKTUI_DIR`)
 - **Fast by default** — parallel dirty checks, session index fast path
 - **Vim navigation** — j/k/h/l throughout all views
 - **Resume flow** — drill into worktree, select session, drop into `claude --resume`
@@ -93,7 +93,7 @@ LaunchTarget = { kind: "claude" | "shell", cwd, sessionId? }
 - `getGitRoot(cwd?)` — resolve repo root via `--git-common-dir`
 - `isDirty(path)` — unstaged + staged + untracked check
 - `listWorktrees(gitRoot)` — porcelain parse + parallel metadata enrichment
-- `createWorktree(gitRoot, branch)` — creates worktree at `$WORKTUI_DIR/<project>/<branch>` (default `~/.worktrees/`), handles local/remote/new branch cases, copies `.claude/settings.local.json`
+- `createWorktree(gitRoot, branch)` — creates worktree at `$WORKTUI_DIR/<project>/<branch>` (default `~/.worktui/`), handles local/remote/new branch cases, copies `.claude/settings.local.json`
 - `removeWorktree`, `deleteBranch`, `fetchRemote`, `listRemoteBranches`
 - `getPRUrl(cwd, branch)` — get GitHub PR URL via `gh pr view`
 - `createDraftPR(cwd, branch)` — push + `gh pr create --draft --fill`

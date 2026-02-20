@@ -2,6 +2,7 @@
 import { render } from "ink";
 import { writeFileSync, unlinkSync } from "fs";
 import { getGitRoot, createWorktree, createDraftPR } from "./git.js";
+import { recordAccess } from "./access.js";
 import App from "./components/App.js";
 import type { LaunchTarget, View } from "./types.js";
 
@@ -26,6 +27,7 @@ async function main() {
       }
 
       // Write launch file so shell wrapper cd's into the worktree
+      recordAccess(worktreePath);
       writeFileSync(LAUNCH_FILE, JSON.stringify({ kind: "shell", cwd: worktreePath }));
     } catch (err: any) {
       console.error(`Error: ${err.message}`);
@@ -61,6 +63,7 @@ async function main() {
   // Write launch instructions to temp file for the shell wrapper
   const target = launchTarget as LaunchTarget | null;
   if (target) {
+    recordAccess(target.cwd);
     writeFileSync(LAUNCH_FILE, JSON.stringify(target));
   }
 }

@@ -74,7 +74,7 @@ export default function CreateWorktree({ onBack, onQuit }: CreateWorktreeProps) 
 
       {folderName && (
         <Box>
-          <Text dimColor>Path: ~/...worktrees/{folderName}</Text>
+          <Text dimColor>Path: ~/.worktui/.../{folderName}</Text>
         </Box>
       )}
 

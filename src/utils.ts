@@ -1,3 +1,9 @@
+import { join } from "path";
+
+export function getWorktreeBase(): string {
+  return process.env.WORKTUI_DIR || join(process.env.HOME || "~", ".worktui");
+}
+
 export function relativeTime(date: Date): string {
   const now = Date.now();
   const diffMs = now - date.getTime();
