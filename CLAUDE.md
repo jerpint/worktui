@@ -54,3 +54,52 @@ worktree cleanup                  # Launch TUI directly into cleanup view
 - **Fast by default** — parallel dirty checks, session index fast path
 - **Vim navigation** — j/k/h/l throughout all views
 - **Resume flow** — drill into worktree, select session, drop into `claude --resume`
+
+## Architecture
+
+### Data Flow
+```
+index.tsx (CLI entry)
+  ├─ CLI mode: -b branch [--pr]
+  │   → git.createWorktree() + git.createDraftPR()
+  │   → write /tmp/worktui-launch → exit
+  │
+  └─ TUI mode: render <App>
+      └─ App (view router, View state machine)
+          ├─ WorktreeList → git.listWorktrees() + keybindings
+          ├─ WorktreeDetail → sessions.getSessions()
+          ├─ FetchBranch → git.fetchRemote() + git.listRemoteBranches()
+          ├─ Cleanup → git.removeWorktree() bulk
+          └─ DeleteConfirm → git.removeWorktree() + git.deleteBranch()
+```
+
+### Launch Pattern
+The TUI can't own the terminal after launching a subprocess, so:
+1. `onLaunch(target)` → unmount the TUI
+2. Write JSON `{ kind, cwd, sessionId? }` to `/tmp/worktui-launch`
+3. Shell wrapper `wt.sh` reads the file and runs `cd + $SHELL` or `claude --resume`
+
+For non-blocking ops like opening a URL, spawn directly (e.g. `Bun.spawn(["open", url])`) — no need to unmount.
+
+### Key Types
+```typescript
+Worktree { path, branch, head, commitSubject, commitDate, isDirty, isMain, sessionCount, lastSessionSummary }
+ClaudeSession { sessionId, firstPrompt, summary, messageCount, created, modified, gitBranch }
+View = "list" | "detail" | "create" | "delete" | "cleanup" | "fetch"
+LaunchTarget = { kind: "claude" | "shell", cwd, sessionId? }
+```
+
+### git.ts Exports
+- `getGitRoot(cwd?)` — resolve repo root via `--git-common-dir`
+- `isDirty(path)` — unstaged + staged + untracked check
+- `listWorktrees(gitRoot)` — porcelain parse + parallel metadata enrichment
+- `createWorktree(gitRoot, branch)` — handles local/remote/new branch cases, copies `.claude/settings.local.json`
+- `removeWorktree`, `deleteBranch`, `fetchRemote`, `listRemoteBranches`
+- `getPRUrl(cwd, branch)` — get GitHub PR URL via `gh pr view`
+- `createDraftPR(cwd, branch)` — push + `gh pr create --draft --fill`
+
+### Component Patterns
+- **StatusBar**: each view builds `hints: {key, label}[]` and passes to `<StatusBar />`
+- **Vim modes**: WorktreeList + FetchBranch have insert/normal modes with fuzzy filtering
+- **Parallel loading**: `listWorktrees` runs isDirty + commitInfo + sessionInfo concurrently per worktree
+- **Theme**: Nord palette in `theme.ts`, used via `theme.selected`, `theme.dim`, etc.

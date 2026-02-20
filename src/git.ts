@@ -255,6 +255,27 @@ export async function listRemoteBranches(
     .filter((b) => !localBranches.has(b.name));
 }
 
+export async function getPRUrl(
+  cwd: string,
+  branch: string
+): Promise<string | null> {
+  const { stdout, exitCode } = await run(
+    ["gh", "pr", "view", branch, "--json", "url", "-q", ".url"],
+    cwd
+  );
+  if (exitCode !== 0) return null;
+  return stdout || null;
+}
+
+export async function getRepoUrl(cwd: string): Promise<string | null> {
+  const { stdout, exitCode } = await run(
+    ["gh", "repo", "view", "--json", "url", "-q", ".url"],
+    cwd
+  );
+  if (exitCode !== 0) return null;
+  return stdout || null;
+}
+
 export async function createDraftPR(
   cwd: string,
   branch: string

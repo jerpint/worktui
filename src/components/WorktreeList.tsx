@@ -1,7 +1,7 @@
 import { Box, Text, useInput } from "ink";
 import { useState, useEffect, useMemo } from "react";
 import type { Worktree, View, LaunchTarget } from "../types.js";
-import { listWorktrees, getGitRoot, createWorktree } from "../git.js";
+import { listWorktrees, getGitRoot, createWorktree, getPRUrl, getRepoUrl } from "../git.js";
 import { getSessions } from "../sessions.js";
 import { relativeTime, truncate, fuzzyMatch, branchToFolder } from "../utils.js";
 import StatusBar from "./StatusBar.js";
@@ -213,6 +213,22 @@ export default function WorktreeList({ onNavigate, onLaunch, onQuit }: WorktreeL
           }
         });
       }
+    } else if (input === "g") {
+      if (selectedWorktree) {
+        if (selectedWorktree.isMain) {
+          getRepoUrl(selectedWorktree.path).then((url) => {
+            if (url) Bun.spawn(["open", url]);
+          });
+        } else {
+          getPRUrl(selectedWorktree.path, selectedWorktree.branch).then((url) => {
+            if (url) {
+              Bun.spawn(["open", url]);
+            } else {
+              Bun.spawn(["gh", "pr", "create", "--web"], { cwd: selectedWorktree.path });
+            }
+          });
+        }
+      }
     }
   });
 
@@ -351,7 +367,7 @@ export default function WorktreeList({ onNavigate, onLaunch, onQuit }: WorktreeL
                 { key: "esc", label: "normal mode" },
               ]
             : [
-                { key: "/k", label: "filter/create" },
+                { key: "/", label: "filter/create" },
                 { key: "j/k", label: "navigate" },
                 { key: "\u23CE", label: "open" },
                 { key: "a", label: "activate" },
@@ -361,6 +377,7 @@ export default function WorktreeList({ onNavigate, onLaunch, onQuit }: WorktreeL
                 { key: "x", label: "cleanup" },
                 { key: "s", label: "sort" },
                 { key: "r", label: "resume" },
+                { key: "g", label: "PR" },
                 { key: "q", label: "quit" },
               ]
         }
