@@ -30,17 +30,16 @@ wt cleanup                    # Jump to cleanup view
 | Key | Action |
 |-----|--------|
 | j/k | Navigate |
-| Enter | Open worktree detail |
-| o | Open shell in worktree (cd) |
-| a | Activate worktree (cd on quit) |
-| / | Fuzzy filter (insert mode) |
+| / | Fuzzy filter / create (insert mode) |
 | Esc | Back to normal mode |
-| c | Create worktree |
+| a | Activate worktree (cd on quit) |
+| o | Open shell in worktree (cd) |
+| c | New Claude session |
+| r | Resume latest Claude session |
+| g | GitHub — open PR, or create-PR page if none (repo homepage for main) |
 | f | Fetch remote branch |
 | d | Delete worktree |
-| x | Cleanup (multi-select) |
-| s | Cycle sort (date/branch/status) |
-| r | Refresh |
+| s | Cycle sort (recent/date/branch/status) |
 | q | Quit |
 
 ### Worktree detail (sessions)

@@ -46,6 +46,7 @@ worktree cleanup                  # Launch TUI directly into cleanup view
 ## Key Files
 
 - `context.md` — analysis of the ~/.claude/ filesystem structure
+- `HUMANS.md` — user-facing quickstart & keybinding reference. Keep it in sync when changing keybindings or usage.
 
 ## Design Principles
 
@@ -89,6 +90,21 @@ View = "list" | "detail" | "create" | "delete" | "cleanup" | "fetch"
 LaunchTarget = { kind: "claude" | "shell", cwd, sessionId? }
 ```
 
+### WorktreeList Keybindings (Normal Mode)
+| Key | Action |
+|-----|--------|
+| j/k | Navigate down/up |
+| / | Filter/create (enter insert mode) |
+| a | Activate worktree (chdir) |
+| o | Open shell in worktree |
+| c | New Claude session |
+| r | Resume latest Claude session |
+| g | GitHub — open PR (or create-PR page if none), repo homepage for main |
+| f | Fetch remote branches |
+| d | Delete worktree |
+| s | Cycle sort (recent/date/branch/status) |
+| q | Quit |
+
 ### git.ts Exports
 - `getGitRoot(cwd?)` — resolve repo root via `--git-common-dir`
 - `isDirty(path)` — unstaged + staged + untracked check
@@ -96,6 +112,7 @@ LaunchTarget = { kind: "claude" | "shell", cwd, sessionId? }
 - `createWorktree(gitRoot, branch)` — creates worktree at `$WORKTUI_DIR/<project>/<branch>` (default `~/.worktui/`), handles local/remote/new branch cases, copies `.claude/settings.local.json`
 - `removeWorktree`, `deleteBranch`, `fetchRemote`, `listRemoteBranches`
 - `getPRUrl(cwd, branch)` — get GitHub PR URL via `gh pr view`
+- `getRepoUrl(cwd)` — get GitHub repo URL via `gh repo view`
 - `createDraftPR(cwd, branch)` — push + `gh pr create --draft --fill`
 
 ### Component Patterns

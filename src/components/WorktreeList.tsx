@@ -200,8 +200,10 @@ export default function WorktreeList({ onNavigate, onLaunch, onQuit }: WorktreeL
       if (selectedWorktree && !selectedWorktree.isMain) {
         onNavigate({ kind: "delete", worktree: selectedWorktree });
       }
-    } else if (input === "x") {
-      onNavigate({ kind: "cleanup" });
+    } else if (input === "c") {
+      if (selectedWorktree) {
+        onLaunch({ kind: "claude", cwd: selectedWorktree.path });
+      }
     } else if (input === "s") {
       setSortBy((prev) => {
         const keys: SortKey[] = ["recent", "date", "branch", "status"];
@@ -382,15 +384,14 @@ export default function WorktreeList({ onNavigate, onLaunch, onQuit }: WorktreeL
             : [
                 { key: "/", label: "filter/create" },
                 { key: "j/k", label: "navigate" },
-                { key: "\u23CE", label: "open" },
                 { key: "a", label: "activate" },
-                { key: "o", label: "shell" },
+                { key: "o", label: "open" },
+                { key: "c", label: "claude" },
+                { key: "r", label: "resume" },
+                { key: "g", label: "github" },
                 { key: "f", label: "fetch" },
                 { key: "d", label: "delete" },
-                { key: "x", label: "cleanup" },
                 { key: "s", label: "sort" },
-                { key: "r", label: "resume" },
-                { key: "g", label: "PR" },
                 { key: "q", label: "quit" },
               ]
         }
