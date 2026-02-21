@@ -1,12 +1,12 @@
 import { Box, Text, useInput } from "ink";
 import { useState, useEffect, useMemo } from "react";
-import { readdirSync, statSync } from "fs";
-import { join } from "path";
+import { readdirSync, statSync, mkdirSync, writeFileSync, readFileSync } from "fs";
+import { join, basename } from "path";
 import type { Worktree, Project, View, LaunchTarget } from "../types.js";
 import { listWorktrees, getGitRoot, createWorktree, getPRUrl, getRepoUrl } from "../git.js";
 import { getSessions } from "../sessions.js";
 import { listProjects } from "../projects.js";
-import { relativeTime, truncate, fuzzyMatch, branchToFolder } from "../utils.js";
+import { getWorktreeBase, relativeTime, truncate, fuzzyMatch, branchToFolder } from "../utils.js";
 import { getAccessTimes, recordAccess } from "../access.js";
 import StatusBar from "./StatusBar.js";
 import { theme } from "../theme.js";
@@ -37,6 +37,10 @@ export default function WorktreeList({ onNavigate, onLaunch, onQuit }: WorktreeL
     setLoading(true);
     try {
       const root = await getGitRoot();
+      // Register this project so it appears in the project picker
+      const projectDir = join(getWorktreeBase(), basename(root));
+      mkdirSync(projectDir, { recursive: true });
+      writeFileSync(join(projectDir, ".gitroot"), root);
       const wts = await listWorktrees(root);
       const accessTimes = getAccessTimes();
       for (const wt of wts) {
@@ -55,13 +59,15 @@ export default function WorktreeList({ onNavigate, onLaunch, onQuit }: WorktreeL
 
   const selectProject = (project: Project) => {
     // Find the best worktree subdir to chdir into.
-    // Prefer last accessed, fall back to first subdirectory.
+    // Prefer last accessed, fall back to first subdirectory,
+    // then fall back to the original git root (from .gitroot marker).
     const accessTimes = getAccessTimes();
     let best: { path: string; time: number } | null = null;
     let fallback: string | null = null;
 
     try {
       for (const child of readdirSync(project.path)) {
+        if (child.startsWith(".")) continue;
         const childPath = join(project.path, child);
         try {
           if (!statSync(childPath).isDirectory()) continue;
@@ -74,7 +80,16 @@ export default function WorktreeList({ onNavigate, onLaunch, onQuit }: WorktreeL
       }
     } catch {}
 
-    const target = best?.path ?? fallback ?? project.path;
+    let target = best?.path ?? fallback;
+    if (!target) {
+      // No worktree subdirs — read the original git root
+      try {
+        target = readFileSync(join(project.path, ".gitroot"), "utf-8").trim();
+      } catch {
+        target = project.path;
+      }
+    }
+
     process.chdir(target);
     setProjects(null);
     setFilter("");
