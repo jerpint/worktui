@@ -21,6 +21,12 @@ export interface ClaudeSession {
   gitBranch: string;
 }
 
+export interface Project {
+  name: string;
+  path: string;
+  worktreeCount: number;
+}
+
 export type View =
   | { kind: "list" }
   | { kind: "detail"; worktree: Worktree }

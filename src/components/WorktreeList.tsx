@@ -1,8 +1,11 @@
 import { Box, Text, useInput } from "ink";
 import { useState, useEffect, useMemo } from "react";
-import type { Worktree, View, LaunchTarget } from "../types.js";
+import { readdirSync, statSync } from "fs";
+import { join } from "path";
+import type { Worktree, Project, View, LaunchTarget } from "../types.js";
 import { listWorktrees, getGitRoot, createWorktree, getPRUrl, getRepoUrl } from "../git.js";
 import { getSessions } from "../sessions.js";
+import { listProjects } from "../projects.js";
 import { relativeTime, truncate, fuzzyMatch, branchToFolder } from "../utils.js";
 import { getAccessTimes, recordAccess } from "../access.js";
 import StatusBar from "./StatusBar.js";
@@ -19,6 +22,7 @@ interface WorktreeListProps {
 
 export default function WorktreeList({ onNavigate, onLaunch, onQuit }: WorktreeListProps) {
   const [worktrees, setWorktrees] = useState<Worktree[]>([]);
+  const [projects, setProjects] = useState<Project[] | null>(null);
   const [selected, setSelected] = useState(0);
   const [sortBy, setSortBy] = useState<SortKey>("recent");
   const [loading, setLoading] = useState(true);
@@ -40,11 +44,42 @@ export default function WorktreeList({ onNavigate, onLaunch, onQuit }: WorktreeL
         if (ts) wt.lastAccessed = new Date(ts);
       }
       setWorktrees(wts);
+      setProjects(null);
       setError(null);
-    } catch (err: any) {
-      setError(err.message);
+    } catch {
+      // Not in a git repo — show project picker instead
+      setProjects(listProjects());
     }
     setLoading(false);
+  };
+
+  const selectProject = (project: Project) => {
+    // Find the best worktree subdir to chdir into.
+    // Prefer last accessed, fall back to first subdirectory.
+    const accessTimes = getAccessTimes();
+    let best: { path: string; time: number } | null = null;
+    let fallback: string | null = null;
+
+    try {
+      for (const child of readdirSync(project.path)) {
+        const childPath = join(project.path, child);
+        try {
+          if (!statSync(childPath).isDirectory()) continue;
+        } catch { continue; }
+        if (!fallback) fallback = childPath;
+        const t = accessTimes[childPath];
+        if (t && (!best || t > best.time)) {
+          best = { path: childPath, time: t };
+        }
+      }
+    } catch {}
+
+    const target = best?.path ?? fallback ?? project.path;
+    process.chdir(target);
+    setProjects(null);
+    setFilter("");
+    setSelected(0);
+    load();
   };
 
   useEffect(() => {
@@ -74,21 +109,43 @@ export default function WorktreeList({ onNavigate, onLaunch, onQuit }: WorktreeL
       .map((x) => x.wt);
   }, [sorted, filter]);
 
+  const displayProjects = useMemo(() => {
+    if (!projects) return [];
+    if (!filter) return projects;
+    return projects
+      .map((p) => ({ p, score: fuzzyMatch(filter, p.name) }))
+      .filter((x) => x.score >= 0)
+      .sort((a, b) => a.score - b.score)
+      .map((x) => x.p);
+  }, [projects, filter]);
+
+  const inProjectMode = projects !== null;
+
   // Clamp selection when filtered list shrinks
+  const listLen = inProjectMode ? displayProjects.length : displayWorktrees.length;
   useEffect(() => {
-    if (selected >= displayWorktrees.length && displayWorktrees.length > 0) {
-      setSelected(displayWorktrees.length - 1);
+    if (selected >= listLen && listLen > 0) {
+      setSelected(listLen - 1);
     }
-  }, [displayWorktrees.length]);
+  }, [listLen]);
 
   const navigate = (dir: "up" | "down") => {
-    const count = displayWorktrees.length;
+    const count = listLen;
     if (count === 0) return;
     if (dir === "down") {
       setSelected((s) => (s < count - 1 ? s + 1 : 0));
     } else {
       setSelected((s) => (s > 0 ? s - 1 : count - 1));
     }
+  };
+
+  const goToProjects = () => {
+    setWorktrees([]);
+    setProjects(listProjects());
+    setFilter("");
+    setSelected(0);
+    setMode("normal");
+    setError(null);
   };
 
   const selectedWorktree = displayWorktrees[selected] ?? null;
@@ -140,11 +197,12 @@ export default function WorktreeList({ onNavigate, onLaunch, onQuit }: WorktreeL
         return;
       }
       if (key.return) {
-        if (canCreate) {
-          // Typed text is not an existing branch — create new worktree
+        if (inProjectMode) {
+          const proj = displayProjects[selected];
+          if (proj) selectProject(proj);
+        } else if (canCreate) {
           doCreate();
         } else if (displayWorktrees.length > 0) {
-          // Exact match or no filter — open selected worktree
           const wt = displayWorktrees[selected];
           if (wt) onNavigate({ kind: "detail", worktree: wt });
         }
@@ -155,7 +213,6 @@ export default function WorktreeList({ onNavigate, onLaunch, onQuit }: WorktreeL
         setSelected(0);
         return;
       }
-      // Printable characters go into the filter
       if (input && !key.ctrl && !key.meta) {
         setFilter((f) => f + input);
         setSelected(0);
@@ -164,9 +221,13 @@ export default function WorktreeList({ onNavigate, onLaunch, onQuit }: WorktreeL
     }
 
     // Normal mode
-    // Enter/l = primary action: open detail view
     if (key.return || input === "l") {
-      if (selectedWorktree) onNavigate({ kind: "detail", worktree: selectedWorktree });
+      if (inProjectMode) {
+        const proj = displayProjects[selected];
+        if (proj) selectProject(proj);
+      } else if (selectedWorktree) {
+        onNavigate({ kind: "detail", worktree: selectedWorktree });
+      }
       return;
     }
 
@@ -179,7 +240,7 @@ export default function WorktreeList({ onNavigate, onLaunch, onQuit }: WorktreeL
       }
       return;
     }
-    if (input === "/" || input === "i" || input === "n") {
+    if (input === "/" || input === "i" || (input === "n" && !inProjectMode)) {
       setMode("insert");
       return;
     }
@@ -195,7 +256,21 @@ export default function WorktreeList({ onNavigate, onLaunch, onQuit }: WorktreeL
       return;
     }
 
-    // Actions
+    // Project-mode actions
+    if (inProjectMode) {
+      if (input === "o") {
+        const proj = displayProjects[selected];
+        if (proj) selectProject(proj);
+      }
+      return;
+    }
+
+    // h = back to projects
+    if (input === "h") {
+      goToProjects();
+      return;
+    }
+
     if (input === "d") {
       if (selectedWorktree && !selectedWorktree.isMain) {
         onNavigate({ kind: "delete", worktree: selectedWorktree });
@@ -251,6 +326,87 @@ export default function WorktreeList({ onNavigate, onLaunch, onQuit }: WorktreeL
     return (
       <Box flexDirection="column" padding={1}>
         <Text>Loading worktrees...</Text>
+      </Box>
+    );
+  }
+
+  if (inProjectMode) {
+    const modeLabel = mode === "insert" ? "INSERT" : "NORMAL";
+    const modeColor = mode === "insert" ? theme.modeInsert : theme.modeNormal;
+
+    return (
+      <Box flexDirection="column" padding={1}>
+        <Box flexDirection="column">
+          <Box><Text color={theme.logo}>{"        _   "}</Text></Box>
+          <Box><Text color={theme.logo}>{"  _ _ _| |_ "}</Text><Text color={theme.bold} bold> worktui</Text></Box>
+          <Box><Text color={theme.logo}>{" | | | |  _|"}</Text></Box>
+          <Box><Text color={theme.logo}>{" |_____|_|  "}</Text></Box>
+        </Box>
+
+        {projects!.length === 0 ? (
+          <Box marginTop={1} flexDirection="column">
+            <Text color={theme.text}>Welcome! No projects here yet.</Text>
+            <Text color={theme.dim}>Run <Text color={theme.accent}>wt</Text> from inside a git repo to get started.</Text>
+          </Box>
+        ) : (
+          <>
+            <Box marginTop={1}>
+              <Text color={theme.dim}>Your projects</Text>
+            </Box>
+            <Box>
+              <Text color={theme.dim}>
+                {displayProjects.length}{filter ? `/${projects!.length}` : ""} repos with worktrees{"  "}
+              </Text>
+              <Text color={modeColor} bold>-- {modeLabel} --</Text>
+            </Box>
+
+            <Box marginTop={1}>
+              <Text color={mode === "insert" ? theme.modeInsert : theme.dim}>{"> "}</Text>
+              <Text color={theme.text}>{filter}</Text>
+              {mode === "insert" && <Text color={theme.modeInsert}>|</Text>}
+            </Box>
+
+            <Box flexDirection="column">
+              {displayProjects.length === 0 ? (
+                <Text color={theme.dim}>No matches.</Text>
+              ) : (
+                displayProjects.map((proj, i) => {
+                  const isSelected = i === selected;
+                  const cursor = isSelected ? " \u25CF " : "   ";
+                  const wts = `${proj.worktreeCount} worktree${proj.worktreeCount !== 1 ? "s" : ""}`;
+                  return (
+                    <Box key={proj.path}>
+                      <Text color={isSelected ? theme.selected : undefined}>{cursor}</Text>
+                      <Text color={isSelected ? theme.selectedText : theme.text} bold={isSelected}>
+                        {proj.name.padEnd(30)}
+                      </Text>
+                      <Text color={theme.dim}>{wts}</Text>
+                    </Box>
+                  );
+                })
+              )}
+            </Box>
+          </>
+        )}
+
+        <StatusBar
+          hints={
+            projects!.length === 0
+              ? [{ key: "q", label: "quit" }]
+              : mode === "insert"
+                ? [
+                    { key: "\u2191\u2193", label: "navigate" },
+                    { key: "\u23CE", label: "open" },
+                    { key: "esc", label: "normal mode" },
+                  ]
+                : [
+                    { key: "/", label: "filter" },
+                    { key: "j/k", label: "navigate" },
+                    { key: "o/\u23CE", label: "open" },
+                    { key: "q", label: "quit" },
+                  ]
+          }
+        />
       </Box>
     );
   }
@@ -384,6 +540,7 @@ export default function WorktreeList({ onNavigate, onLaunch, onQuit }: WorktreeL
             : [
                 { key: "/", label: "filter/create" },
                 { key: "j/k", label: "navigate" },
+                { key: "h", label: "projects" },
                 { key: "a", label: "activate" },
                 { key: "o", label: "open" },
                 { key: "c", label: "claude" },
