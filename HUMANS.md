@@ -48,6 +48,7 @@ Shown when `wt` is launched outside a git repo.
 | h | Back to project picker |
 | a | Activate worktree (cd on quit) |
 | o | Open shell in worktree (cd) |
+| b | Branch — create worktree off selected branch |
 | c | New Claude session |
 | r | Resume latest Claude session |
 | g | GitHub — open PR, or create-PR page if none (repo homepage for main) |

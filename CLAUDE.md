@@ -111,6 +111,7 @@ Projects are auto-registered when you run `wt` from any git repo.
 | h | Back to project picker |
 | a | Activate worktree (chdir) |
 | o | Open shell in worktree |
+| b | Branch off selected worktree |
 | c | New Claude session |
 | r | Resume latest Claude session |
 | g | GitHub — open PR (or create-PR page if none), repo homepage for main |

@@ -130,7 +130,8 @@ export async function listWorktrees(gitRoot: string): Promise<Worktree[]> {
 
 export async function createWorktree(
   gitRoot: string,
-  branch: string
+  branch: string,
+  startPoint?: string
 ): Promise<string> {
   const folderName = branchToFolder(branch);
   const worktreesDir = join(getWorktreeBase(), basename(gitRoot));
@@ -174,10 +175,9 @@ export async function createWorktree(
         throw new Error(`Failed to create worktree: ${stderr}`);
     } else {
       // New branch
-      const { exitCode, stderr } = await run(
-        ["git", "worktree", "add", worktreePath, "-b", branch],
-        gitRoot
-      );
+      const cmd = ["git", "worktree", "add", worktreePath, "-b", branch];
+      if (startPoint) cmd.push(startPoint);
+      const { exitCode, stderr } = await run(cmd, gitRoot);
       if (exitCode !== 0)
         throw new Error(`Failed to create worktree: ${stderr}`);
     }

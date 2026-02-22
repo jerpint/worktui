@@ -12,7 +12,7 @@ import StatusBar from "./StatusBar.js";
 import { theme } from "../theme.js";
 
 type SortKey = "recent" | "date" | "branch" | "status";
-type Mode = "insert" | "normal";
+type Mode = "insert" | "normal" | "branch";
 
 interface WorktreeListProps {
   onNavigate: (view: View) => void;
@@ -32,6 +32,8 @@ export default function WorktreeList({ onNavigate, onLaunch, onQuit }: WorktreeL
   const [activePath, setActivePath] = useState<string | null>(null);
   const [startCwd] = useState(() => process.cwd());
   const [creating, setCreating] = useState(false);
+  const [branchInput, setBranchInput] = useState("");
+  const [branchBase, setBranchBase] = useState<string | null>(null);
 
   const load = async () => {
     setLoading(true);
@@ -185,11 +187,42 @@ export default function WorktreeList({ onNavigate, onLaunch, onQuit }: WorktreeL
     }
   };
 
+  const doBranch = async () => {
+    const branch = branchInput.trim();
+    if (!branch || creating || !branchBase) return;
+    setCreating(true);
+    try {
+      const gitRoot = await getGitRoot();
+      const path = await createWorktree(gitRoot, branch, branchBase);
+      setBranchInput("");
+      setBranchBase(null);
+      setMode("normal");
+      // Reload worktrees so we can navigate to the new one
+      const wts = await listWorktrees(gitRoot);
+      const accessTimes = getAccessTimes();
+      for (const wt of wts) {
+        const ts = accessTimes[wt.path];
+        if (ts) wt.lastAccessed = new Date(ts);
+      }
+      setWorktrees(wts);
+      const newWt = wts.find((wt) => wt.path === path);
+      if (newWt) {
+        setCreating(false);
+        onNavigate({ kind: "detail", worktree: newWt });
+        return;
+      }
+    } catch (err: any) {
+      setError((err as Error).message);
+    }
+    setCreating(false);
+  };
+
   useInput((input, key) => {
     if (creating) return;
 
-    // Arrow keys always navigate
+    // Arrow keys always navigate (except in branch mode)
     if (key.downArrow) {
+      if (mode === "branch") return;
       if (mode === "insert") {
         setMode("normal");
       } else {
@@ -198,10 +231,32 @@ export default function WorktreeList({ onNavigate, onLaunch, onQuit }: WorktreeL
       return;
     }
     if (key.upArrow) {
+      if (mode === "branch") return;
       if (mode === "normal" && selected === 0) {
         setMode("insert");
       } else if (mode === "normal") {
         navigate("up");
+      }
+      return;
+    }
+
+    if (mode === "branch") {
+      if (key.escape) {
+        setBranchInput("");
+        setBranchBase(null);
+        setMode("normal");
+        return;
+      }
+      if (key.return) {
+        if (branchInput.trim()) doBranch();
+        return;
+      }
+      if (key.backspace || key.delete) {
+        setBranchInput((f) => f.slice(0, -1));
+        return;
+      }
+      if (input && !key.ctrl && !key.meta) {
+        setBranchInput((f) => f + input);
       }
       return;
     }
@@ -283,6 +338,15 @@ export default function WorktreeList({ onNavigate, onLaunch, onQuit }: WorktreeL
     // h = back to projects
     if (input === "h") {
       goToProjects();
+      return;
+    }
+
+    if (input === "b") {
+      if (selectedWorktree) {
+        setBranchBase(selectedWorktree.branch);
+        setBranchInput("");
+        setMode("branch");
+      }
       return;
     }
 
@@ -436,8 +500,8 @@ export default function WorktreeList({ onNavigate, onLaunch, onQuit }: WorktreeL
   }
 
   const cwd = process.cwd();
-  const modeLabel = mode === "insert" ? "INSERT" : "NORMAL";
-  const modeColor = mode === "insert" ? theme.modeInsert : theme.modeNormal;
+  const modeLabel = mode === "insert" ? "INSERT" : mode === "branch" ? "BRANCH" : "NORMAL";
+  const modeColor = mode !== "normal" ? theme.modeInsert : theme.modeNormal;
 
   return (
     <Box flexDirection="column" padding={1}>
@@ -455,15 +519,31 @@ export default function WorktreeList({ onNavigate, onLaunch, onQuit }: WorktreeL
         <Text color={modeColor} bold>-- {modeLabel} --</Text>
       </Box>
 
-      {/* Filter / create bar */}
+      {/* Filter / create / branch bar */}
       <Box marginTop={1}>
-        <Text color={mode === "insert" ? theme.modeInsert : theme.dim}>{"> "}</Text>
-        <Text color={theme.text}>{filter}</Text>
-        {mode === "insert" && <Text color={theme.modeInsert}>|</Text>}
-        {mode === "insert" && canCreate && !creating && (
-          <Text color={theme.dim}> {"\u2192"} worktrees/{branchToFolder(filter)} (enter to create)</Text>
+        {mode === "branch" ? (
+          <>
+            <Text color={theme.modeInsert}>{"branch from "}</Text>
+            <Text color={theme.accent}>{branchBase}</Text>
+            <Text color={theme.modeInsert}>{": "}</Text>
+            <Text color={theme.text}>{branchInput}</Text>
+            <Text color={theme.modeInsert}>|</Text>
+            {branchInput.trim() && !creating && (
+              <Text color={theme.dim}> {"\u2192"} worktrees/{branchToFolder(branchInput)}</Text>
+            )}
+            {creating && <Text color={theme.modeInsert}> Creating...</Text>}
+          </>
+        ) : (
+          <>
+            <Text color={mode === "insert" ? theme.modeInsert : theme.dim}>{"> "}</Text>
+            <Text color={theme.text}>{filter}</Text>
+            {mode === "insert" && <Text color={theme.modeInsert}>|</Text>}
+            {mode === "insert" && canCreate && !creating && (
+              <Text color={theme.dim}> {"\u2192"} worktrees/{branchToFolder(filter)} (enter to create)</Text>
+            )}
+            {creating && <Text color={theme.modeInsert}> Creating...</Text>}
+          </>
         )}
-        {creating && <Text color={theme.modeInsert}> Creating...</Text>}
       </Box>
 
       {/* Worktree list */}
@@ -530,7 +610,7 @@ export default function WorktreeList({ onNavigate, onLaunch, onQuit }: WorktreeL
       </Box>
 
       <Box marginTop={1} height={1}>
-        {mode !== "insert" && selectedWorktree ? (
+        {mode === "normal" && selectedWorktree ? (
           <>
             <Text color={theme.dim}>{" claude: "}</Text>
             <Text color={theme.dim} italic>
@@ -546,26 +626,32 @@ export default function WorktreeList({ onNavigate, onLaunch, onQuit }: WorktreeL
 
       <StatusBar
         hints={
-          mode === "insert"
+          mode === "branch"
             ? [
-                { key: "\u2191\u2193", label: "navigate" },
-                { key: "\u23CE", label: canCreate ? "create" : "open" },
-                { key: "esc", label: "normal mode" },
+                { key: "\u23CE", label: "create" },
+                { key: "esc", label: "cancel" },
               ]
-            : [
-                { key: "/", label: "filter/create" },
-                { key: "j/k", label: "navigate" },
-                { key: "h", label: "projects" },
-                { key: "a", label: "activate" },
-                { key: "o", label: "open" },
-                { key: "c", label: "claude" },
-                { key: "r", label: "resume" },
-                { key: "g", label: "github" },
-                { key: "f", label: "fetch" },
-                { key: "d", label: "delete" },
-                { key: "s", label: "sort" },
-                { key: "q", label: "quit" },
-              ]
+            : mode === "insert"
+              ? [
+                  { key: "\u2191\u2193", label: "navigate" },
+                  { key: "\u23CE", label: canCreate ? "create" : "open" },
+                  { key: "esc", label: "normal mode" },
+                ]
+              : [
+                  { key: "/", label: "filter/create" },
+                  { key: "j/k", label: "navigate" },
+                  { key: "h", label: "projects" },
+                  { key: "a", label: "activate" },
+                  { key: "o", label: "open" },
+                  { key: "b", label: "branch" },
+                  { key: "c", label: "claude" },
+                  { key: "r", label: "resume" },
+                  { key: "g", label: "github" },
+                  { key: "f", label: "fetch" },
+                  { key: "d", label: "delete" },
+                  { key: "s", label: "sort" },
+                  { key: "q", label: "quit" },
+                ]
         }
       />
     </Box>
