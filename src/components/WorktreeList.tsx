@@ -291,7 +291,7 @@ export default function WorktreeList({ onNavigate, onLaunch, onQuit }: WorktreeL
     }
 
     // Normal mode
-    if (key.return || input === "l") {
+    if (key.return || input === "l" || key.rightArrow) {
       if (inProjectMode) {
         const proj = displayProjects[selected];
         if (proj) selectProject(proj);
@@ -335,8 +335,8 @@ export default function WorktreeList({ onNavigate, onLaunch, onQuit }: WorktreeL
       return;
     }
 
-    // h = back to projects
-    if (input === "h") {
+    // h / left arrow = back to projects
+    if (input === "h" || key.leftArrow) {
       goToProjects();
       return;
     }
@@ -480,8 +480,8 @@ export default function WorktreeList({ onNavigate, onLaunch, onQuit }: WorktreeL
                   ]
                 : [
                     { key: "/", label: "filter" },
-                    { key: "j/k", label: "navigate" },
-                    { key: "o/\u23CE", label: "open" },
+                    { key: "\u2191\u2193", label: "navigate" },
+                    { key: "\u2192/\u23CE", label: "open" },
                     { key: "q", label: "quit" },
                   ]
           }
@@ -639,10 +639,11 @@ export default function WorktreeList({ onNavigate, onLaunch, onQuit }: WorktreeL
                 ]
               : [
                   { key: "/", label: "filter/create" },
-                  { key: "j/k", label: "navigate" },
-                  { key: "h", label: "projects" },
+                  { key: "\u2191\u2193", label: "navigate" },
+                  { key: "\u2190", label: "projects" },
+                  { key: "\u2192", label: "open" },
                   { key: "a", label: "activate" },
-                  { key: "o", label: "open" },
+                  { key: "o", label: "shell" },
                   { key: "b", label: "branch" },
                   { key: "c", label: "claude" },
                   { key: "r", label: "resume" },

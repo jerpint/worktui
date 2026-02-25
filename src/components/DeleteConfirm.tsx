@@ -187,7 +187,7 @@ export default function DeleteConfirm({ worktree, onBack, onQuit }: DeleteConfir
 
       <StatusBar
         hints={[
-          { key: "j/k", label: "navigate" },
+          { key: "\u2191\u2193", label: "navigate" },
           { key: "\u23CE/space", label: "toggle" },
           { key: "\u2190\u2192", label: "yes/no" },
           { key: "esc", label: "cancel" },

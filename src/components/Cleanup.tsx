@@ -50,7 +50,7 @@ export default function Cleanup({ onBack, onQuit }: CleanupProps) {
       return;
     }
 
-    if (key.escape) {
+    if (key.escape || key.leftArrow) {
       onBack();
       return;
     }
@@ -210,12 +210,12 @@ export default function Cleanup({ onBack, onQuit }: CleanupProps) {
 
       <StatusBar
         hints={[
-          { key: "j/k", label: "navigate" },
+          { key: "\u2191\u2193", label: "navigate" },
           { key: "space", label: "toggle" },
           { key: "a", label: "all" },
           { key: "b", label: "branches" },
           { key: "\u23CE", label: "confirm" },
-          { key: "esc", label: "cancel" },
+          { key: "\u2190/esc", label: "cancel" },
         ]}
       />
     </Box>

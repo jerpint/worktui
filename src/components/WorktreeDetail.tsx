@@ -30,7 +30,7 @@ export default function WorktreeDetail({
   }, [worktree.path]);
 
   useInput((input, key) => {
-    if (key.escape || input === "h") {
+    if (key.escape || input === "h" || key.leftArrow) {
       onBack();
       return;
     }
@@ -50,7 +50,7 @@ export default function WorktreeDetail({
       setSelected((s) => (s > 0 ? s - 1 : count - 1));
     }
 
-    if (key.return) {
+    if (key.return || key.rightArrow) {
       if (selected === newSessionIdx) {
         onLaunch({ kind: "claude", cwd: worktree.path });
       } else {
@@ -142,12 +142,12 @@ export default function WorktreeDetail({
 
       <StatusBar
         hints={[
-          { key: "j/k", label: "navigate" },
-          { key: "\u23CE", label: "select" },
+          { key: "\u2191\u2193", label: "navigate" },
+          { key: "\u2192/\u23CE", label: "select" },
           { key: "n", label: "new session" },
           { key: "r", label: "resume last" },
           { key: "o", label: "open shell" },
-          { key: "esc/h", label: "back" },
+          { key: "\u2190/esc", label: "back" },
           { key: "q", label: "quit" },
         ]}
       />

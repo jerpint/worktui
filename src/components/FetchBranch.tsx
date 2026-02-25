@@ -107,12 +107,12 @@ export default function FetchBranch({ onBack, onQuit, onLaunch }: FetchBranchPro
     }
 
     // Normal mode
-    if (key.escape || input === "h") { onBack(); return; }
+    if (key.escape || input === "h" || key.leftArrow) { onBack(); return; }
     if (input === "q") { onQuit(); return; }
     if (input === "/" || input === "i") { setMode("insert"); return; }
     if (input === "j") { navigate("down"); return; }
     if (input === "k") { navigate("up"); return; }
-    if (input === "l") {
+    if (input === "l" || key.rightArrow) {
       const branch = displayBranches[selected];
       if (branch) checkoutBranch(branch.name);
     }
@@ -201,9 +201,9 @@ export default function FetchBranch({ onBack, onQuit, onLaunch }: FetchBranchPro
               ]
             : [
                 { key: "/", label: "filter" },
-                { key: "j/k", label: "navigate" },
-                { key: "\u23CE", label: "checkout" },
-                { key: "esc", label: "back" },
+                { key: "\u2191\u2193", label: "navigate" },
+                { key: "\u2192/\u23CE", label: "checkout" },
+                { key: "\u2190/esc", label: "back" },
                 { key: "q", label: "quit" },
               ]
         }
