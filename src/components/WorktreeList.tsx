@@ -35,13 +35,16 @@ export default function WorktreeList({ onNavigate, onLaunch, onQuit }: WorktreeL
   const [creating, setCreating] = useState(false);
   const [branchInput, setBranchInput] = useState("");
   const [branchBase, setBranchBase] = useState<string | null>(null);
+  const [projectName, setProjectName] = useState("");
 
   const load = async () => {
     setLoading(true);
     try {
       const root = await getGitRoot();
+      const name = basename(root);
+      setProjectName(name);
       // Register this project so it appears in the project picker
-      const projectDir = join(getWorktreeBase(), basename(root));
+      const projectDir = join(getWorktreeBase(), name);
       mkdirSync(projectDir, { recursive: true });
       writeFileSync(join(projectDir, ".gitroot"), root);
       const wts = await listWorktrees(root);
@@ -270,11 +273,11 @@ export default function WorktreeList({ onNavigate, onLaunch, onQuit }: WorktreeL
         if (inProjectMode) {
           const proj = displayProjects[selected];
           if (proj) selectProject(proj);
-        } else if (canCreate) {
-          doCreate();
         } else if (displayWorktrees.length > 0) {
           const wt = displayWorktrees[selected];
           if (wt) onLaunch({ kind: "claude", cwd: wt.path, resume: true });
+        } else if (canCreate) {
+          doCreate();
         }
         return;
       }
@@ -531,7 +534,7 @@ export default function WorktreeList({ onNavigate, onLaunch, onQuit }: WorktreeL
             <Text color={theme.text}>{branchInput}</Text>
             <Text color={theme.modeInsert}>|</Text>
             {branchInput.trim() && !creating && (
-              <Text color={theme.dim}> {"\u2192"} worktrees/{branchToFolder(branchInput)}</Text>
+              <Text color={theme.dim}> {"\u2192"} ~/.worktui/{projectName}/{branchToFolder(branchInput)}</Text>
             )}
             {creating && <Text color={theme.modeInsert}> Creating...</Text>}
           </>
@@ -541,8 +544,8 @@ export default function WorktreeList({ onNavigate, onLaunch, onQuit }: WorktreeL
             focused={mode === "insert"}
 
             suffix={
-              mode === "insert" && canCreate && !creating
-                ? `\u2192 worktrees/${branchToFolder(filter)} (enter to create)`
+              mode === "insert" && canCreate && !creating && displayWorktrees.length === 0
+                ? `\u2192 ~/.worktui/${projectName}/${branchToFolder(filter)} (enter to create)`
                 : creating
                   ? "Creating..."
                   : undefined
