@@ -205,10 +205,9 @@ export default function WorktreeList({ onNavigate, onLaunch, onQuit }: WorktreeL
         if (ts) wt.lastAccessed = new Date(ts);
       }
       setWorktrees(wts);
-      const newWt = wts.find((wt) => wt.path === path);
-      if (newWt) {
+      if (path) {
         setCreating(false);
-        onNavigate({ kind: "detail", worktree: newWt });
+        onLaunch({ kind: "shell", cwd: path });
         return;
       }
     } catch (err: any) {
@@ -274,7 +273,7 @@ export default function WorktreeList({ onNavigate, onLaunch, onQuit }: WorktreeL
           doCreate();
         } else if (displayWorktrees.length > 0) {
           const wt = displayWorktrees[selected];
-          if (wt) onNavigate({ kind: "detail", worktree: wt });
+          if (wt) onLaunch({ kind: "claude", cwd: wt.path, resume: true });
         }
         return;
       }
@@ -296,7 +295,7 @@ export default function WorktreeList({ onNavigate, onLaunch, onQuit }: WorktreeL
         const proj = displayProjects[selected];
         if (proj) selectProject(proj);
       } else if (selectedWorktree) {
-        onNavigate({ kind: "detail", worktree: selectedWorktree });
+        onLaunch({ kind: "claude", cwd: selectedWorktree.path, resume: true });
       }
       return;
     }
@@ -641,7 +640,7 @@ export default function WorktreeList({ onNavigate, onLaunch, onQuit }: WorktreeL
                   { key: "/", label: "filter/create" },
                   { key: "\u2191\u2193", label: "navigate" },
                   { key: "\u2190", label: "projects" },
-                  { key: "\u2192", label: "open" },
+                  { key: "\u2192", label: "sessions" },
                   { key: "a", label: "activate" },
                   { key: "o", label: "shell" },
                   { key: "b", label: "branch" },

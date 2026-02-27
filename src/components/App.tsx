@@ -2,7 +2,6 @@ import { useApp } from "ink";
 import { useState } from "react";
 import type { View, LaunchTarget } from "../types.js";
 import WorktreeList from "./WorktreeList.js";
-import WorktreeDetail from "./WorktreeDetail.js";
 import CreateWorktree from "./CreateWorktree.js";
 import DeleteConfirm from "./DeleteConfirm.js";
 import Cleanup from "./Cleanup.js";
@@ -24,15 +23,6 @@ export default function App({ initialView, onLaunch }: AppProps) {
   switch (view.kind) {
     case "list":
       return <WorktreeList onNavigate={navigate} onLaunch={onLaunch} onQuit={quit} />;
-    case "detail":
-      return (
-        <WorktreeDetail
-          worktree={view.worktree}
-          onBack={goHome}
-          onQuit={quit}
-          onLaunch={onLaunch}
-        />
-      );
     case "create":
       return <CreateWorktree onBack={goHome} onQuit={quit} />;
     case "delete":

@@ -56,10 +56,17 @@ wt() {
       session_id="${session_id%%\"*}"
     fi
 
+    local resume="false"
+    if [[ "$payload" == *'"resume":true'* ]]; then
+      resume="true"
+    fi
+
     echo "$PWD" > "$last_wt_file"
     cd "$cwd"
     if [ -n "$session_id" ]; then
       claude --resume "$session_id"
+    elif [ "$resume" = "true" ]; then
+      claude --resume
     else
       claude
     fi

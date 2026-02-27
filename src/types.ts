@@ -29,12 +29,11 @@ export interface Project {
 
 export type View =
   | { kind: "list" }
-  | { kind: "detail"; worktree: Worktree }
   | { kind: "create" }
   | { kind: "delete"; worktree: Worktree }
   | { kind: "cleanup" }
   | { kind: "fetch" };
 
 export type LaunchTarget =
-  | { kind: "claude"; cwd: string; sessionId?: string }
+  | { kind: "claude"; cwd: string; sessionId?: string; resume?: boolean }
   | { kind: "shell"; cwd: string };
