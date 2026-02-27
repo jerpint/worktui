@@ -9,6 +9,7 @@ import { listProjects } from "../projects.js";
 import { getWorktreeBase, relativeTime, truncate, fuzzyMatch, branchToFolder } from "../utils.js";
 import { getAccessTimes, recordAccess } from "../access.js";
 import StatusBar from "./StatusBar.js";
+import SearchBar from "./SearchBar.js";
 import { theme } from "../theme.js";
 
 type SortKey = "recent" | "date" | "branch" | "status";
@@ -439,9 +440,11 @@ export default function WorktreeList({ onNavigate, onLaunch, onQuit }: WorktreeL
             </Box>
 
             <Box marginTop={1}>
-              <Text color={mode === "insert" ? theme.modeInsert : theme.dim}>{"> "}</Text>
-              <Text color={theme.text}>{filter}</Text>
-              {mode === "insert" && <Text color={theme.modeInsert}>|</Text>}
+              <SearchBar
+                value={filter}
+                focused={mode === "insert"}
+
+              />
             </Box>
 
             <Box flexDirection="column">
@@ -533,15 +536,18 @@ export default function WorktreeList({ onNavigate, onLaunch, onQuit }: WorktreeL
             {creating && <Text color={theme.modeInsert}> Creating...</Text>}
           </>
         ) : (
-          <>
-            <Text color={mode === "insert" ? theme.modeInsert : theme.dim}>{"> "}</Text>
-            <Text color={theme.text}>{filter}</Text>
-            {mode === "insert" && <Text color={theme.modeInsert}>|</Text>}
-            {mode === "insert" && canCreate && !creating && (
-              <Text color={theme.dim}> {"\u2192"} worktrees/{branchToFolder(filter)} (enter to create)</Text>
-            )}
-            {creating && <Text color={theme.modeInsert}> Creating...</Text>}
-          </>
+          <SearchBar
+            value={filter}
+            focused={mode === "insert"}
+
+            suffix={
+              mode === "insert" && canCreate && !creating
+                ? `\u2192 worktrees/${branchToFolder(filter)} (enter to create)`
+                : creating
+                  ? "Creating..."
+                  : undefined
+            }
+          />
         )}
       </Box>
 

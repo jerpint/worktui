@@ -5,6 +5,7 @@ import { getGitRoot, fetchRemote, listRemoteBranches, listWorktrees, createWorkt
 import type { RemoteBranch } from "../git.js";
 import { fuzzyMatch, truncate, relativeTime } from "../utils.js";
 import StatusBar from "./StatusBar.js";
+import SearchBar from "./SearchBar.js";
 import { theme } from "../theme.js";
 
 type Mode = "insert" | "normal";
@@ -157,9 +158,11 @@ export default function FetchBranch({ onBack, onQuit, onLaunch }: FetchBranchPro
       </Box>
 
       <Box marginTop={1}>
-        <Text color={mode === "insert" ? theme.modeInsert : theme.dim}>{"> "}</Text>
-        <Text color={theme.text}>{filter}</Text>
-        {mode === "insert" && <Text color={theme.modeInsert}>|</Text>}
+        <SearchBar
+          value={filter}
+          focused={mode === "insert"}
+
+        />
       </Box>
 
       <Box flexDirection="column">
