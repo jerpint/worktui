@@ -52,7 +52,6 @@ Shown when `wt` is launched outside a git repo.
 | c | New Claude session |
 | r | Resume latest Claude session |
 | g | GitHub — open PR, or create-PR page if none (repo homepage for main) |
-| f | Fetch remote branch |
 | d | Delete worktree |
 | s | Cycle sort (recent/date/branch/status) |
 | q | Quit |

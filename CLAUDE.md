@@ -70,7 +70,6 @@ index.tsx (CLI entry)
       └─ App (view router, View state machine)
           ├─ WorktreeList → git.listWorktrees() OR projects.listProjects()
           ├─ WorktreeDetail → sessions.getSessions()
-          ├─ FetchBranch → git.fetchRemote() + git.listRemoteBranches()
           ├─ Cleanup → git.removeWorktree() bulk
           └─ DeleteConfirm → git.removeWorktree() + git.deleteBranch()
 ```
@@ -88,7 +87,7 @@ For non-blocking ops like opening a URL, spawn directly (e.g. `Bun.spawn(["open"
 Worktree { path, branch, head, commitSubject, commitDate, isDirty, isMain, sessionCount, lastSessionSummary }
 ClaudeSession { sessionId, firstPrompt, summary, messageCount, created, modified, gitBranch }
 Project { name, path, worktreeCount }
-View = "list" | "detail" | "create" | "delete" | "cleanup" | "fetch"
+View = "list" | "detail" | "create" | "delete" | "cleanup"
 LaunchTarget = { kind: "claude" | "shell", cwd, sessionId? }
 ```
 
@@ -115,7 +114,6 @@ Projects are auto-registered when you run `wt` from any git repo.
 | c | New Claude session |
 | r | Resume latest Claude session |
 | g | GitHub — open PR (or create-PR page if none), repo homepage for main |
-| f | Fetch remote branches |
 | d | Delete worktree |
 | s | Cycle sort (recent/date/branch/status) |
 | q | Quit |
@@ -135,7 +133,7 @@ Projects are auto-registered when you run `wt` from any git repo.
 
 ### Component Patterns
 - **StatusBar**: each view builds `hints: {key, label}[]` and passes to `<StatusBar />`
-- **Vim modes**: WorktreeList + FetchBranch have insert/normal modes with fuzzy filtering
+- **Vim modes**: WorktreeList has insert/normal modes with fuzzy filtering
 - **Project mode**: WorktreeList falls back to a project picker when `getGitRoot()` fails. A `.gitroot` file in each project dir maps back to the original repo.
 - **Parallel loading**: `listWorktrees` runs isDirty + commitInfo + sessionInfo concurrently per worktree
 - **Theme**: Nord palette in `theme.ts`, used via `theme.selected`, `theme.dim`, etc.

@@ -31,8 +31,7 @@ export type View =
   | { kind: "list" }
   | { kind: "create" }
   | { kind: "delete"; worktree: Worktree }
-  | { kind: "cleanup" }
-  | { kind: "fetch" };
+  | { kind: "cleanup" };
 
 export type LaunchTarget =
   | { kind: "claude"; cwd: string; sessionId?: string; resume?: boolean }

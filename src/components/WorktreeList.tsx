@@ -3,7 +3,8 @@ import { useState, useEffect, useMemo } from "react";
 import { readdirSync, statSync, mkdirSync, writeFileSync, readFileSync } from "fs";
 import { join, basename } from "path";
 import type { Worktree, Project, View, LaunchTarget } from "../types.js";
-import { listWorktrees, getGitRoot, createWorktree, getPRUrl, getRepoUrl } from "../git.js";
+import { listWorktrees, getGitRoot, createWorktree, getPRUrl, getRepoUrl, fetchRemote, listRemoteBranches } from "../git.js";
+import type { RemoteBranch } from "../git.js";
 import { getSessions } from "../sessions.js";
 import { listProjects } from "../projects.js";
 import { getWorktreeBase, relativeTime, truncate, fuzzyMatch, branchToFolder } from "../utils.js";
@@ -36,6 +37,22 @@ export default function WorktreeList({ onNavigate, onLaunch, onQuit }: WorktreeL
   const [branchInput, setBranchInput] = useState("");
   const [branchBase, setBranchBase] = useState<string | null>(null);
   const [projectName, setProjectName] = useState("");
+  const [remoteBranches, setRemoteBranches] = useState<RemoteBranch[]>([]);
+  const [remoteFetching, setRemoteFetching] = useState(false);
+  const [remoteCreating, setRemoteCreating] = useState<string | null>(null);
+
+  const loadRemoteBranches = async (root: string, wts: Worktree[]) => {
+    setRemoteFetching(true);
+    try {
+      await fetchRemote(root);
+      const localBranches = new Set(wts.map((wt) => wt.branch));
+      const remote = await listRemoteBranches(root, localBranches);
+      setRemoteBranches(remote);
+    } catch {
+      // Silently ignore — remote fetch is best-effort
+    }
+    setRemoteFetching(false);
+  };
 
   const load = async () => {
     setLoading(true);
@@ -56,6 +73,8 @@ export default function WorktreeList({ onNavigate, onLaunch, onQuit }: WorktreeL
       setWorktrees(wts);
       setProjects(null);
       setError(null);
+      // Kick off non-blocking remote branch fetch
+      loadRemoteBranches(root, wts);
     } catch {
       // Not in a git repo — show project picker instead
       setProjects(listProjects());
@@ -130,6 +149,16 @@ export default function WorktreeList({ onNavigate, onLaunch, onQuit }: WorktreeL
       .map((x) => x.wt);
   }, [sorted, filter]);
 
+  const displayRemote = useMemo(() => {
+    if (!remoteBranches.length) return [];
+    if (!filter) return remoteBranches;
+    return remoteBranches
+      .map((b) => ({ b, score: fuzzyMatch(filter, b.name) }))
+      .filter((x) => x.score >= 0)
+      .sort((a, b) => a.score - b.score)
+      .map((x) => x.b);
+  }, [remoteBranches, filter]);
+
   const displayProjects = useMemo(() => {
     if (!projects) return [];
     if (!filter) return projects;
@@ -142,8 +171,11 @@ export default function WorktreeList({ onNavigate, onLaunch, onQuit }: WorktreeL
 
   const inProjectMode = projects !== null;
 
+  // Cap visible remote branches at 10
+  const visibleRemoteCount = Math.min(displayRemote.length, 10);
+
   // Clamp selection when filtered list shrinks
-  const listLen = inProjectMode ? displayProjects.length : displayWorktrees.length;
+  const listLen = inProjectMode ? displayProjects.length : displayWorktrees.length + visibleRemoteCount;
   useEffect(() => {
     if (selected >= listLen && listLen > 0) {
       setSelected(listLen - 1);
@@ -169,7 +201,11 @@ export default function WorktreeList({ onNavigate, onLaunch, onQuit }: WorktreeL
     setError(null);
   };
 
-  const selectedWorktree = displayWorktrees[selected] ?? null;
+  const selectedWorktree = selected < displayWorktrees.length ? (displayWorktrees[selected] ?? null) : null;
+  const remoteIdx = selected - displayWorktrees.length;
+  const selectedRemoteBranch = remoteIdx >= 0 && remoteIdx < visibleRemoteCount
+    ? (displayRemote[remoteIdx] ?? null)
+    : null;
 
   // Check if filter text exactly matches an existing branch
   const exactMatch = filter && worktrees.some((wt) => wt.branch === filter);
@@ -220,8 +256,20 @@ export default function WorktreeList({ onNavigate, onLaunch, onQuit }: WorktreeL
     setCreating(false);
   };
 
+  const checkoutRemoteBranch = async (branch: string) => {
+    setRemoteCreating(branch);
+    try {
+      const root = await getGitRoot();
+      const path = await createWorktree(root, branch);
+      onLaunch({ kind: "shell", cwd: path });
+    } catch (err: any) {
+      setError((err as Error).message);
+      setRemoteCreating(null);
+    }
+  };
+
   useInput((input, key) => {
-    if (creating) return;
+    if (creating || remoteCreating) return;
 
     // Arrow keys always navigate (except in branch mode)
     if (key.downArrow) {
@@ -273,9 +321,10 @@ export default function WorktreeList({ onNavigate, onLaunch, onQuit }: WorktreeL
         if (inProjectMode) {
           const proj = displayProjects[selected];
           if (proj) selectProject(proj);
-        } else if (displayWorktrees.length > 0) {
-          const wt = displayWorktrees[selected];
-          if (wt) onLaunch({ kind: "claude", cwd: wt.path, resume: true });
+        } else if (selectedWorktree) {
+          onLaunch({ kind: "claude", cwd: selectedWorktree.path, resume: true });
+        } else if (selectedRemoteBranch && !remoteCreating) {
+          checkoutRemoteBranch(selectedRemoteBranch.name);
         } else if (canCreate) {
           doCreate();
         }
@@ -300,6 +349,8 @@ export default function WorktreeList({ onNavigate, onLaunch, onQuit }: WorktreeL
         if (proj) selectProject(proj);
       } else if (selectedWorktree) {
         onLaunch({ kind: "claude", cwd: selectedWorktree.path, resume: true });
+      } else if (selectedRemoteBranch && !remoteCreating) {
+        checkoutRemoteBranch(selectedRemoteBranch.name);
       }
       return;
     }
@@ -375,8 +426,6 @@ export default function WorktreeList({ onNavigate, onLaunch, onQuit }: WorktreeL
         setActivePath(selectedWorktree.path);
         try { process.chdir(selectedWorktree.path); } catch {}
       }
-    } else if (input === "f") {
-      onNavigate({ kind: "fetch" });
     } else if (input === "r") {
       if (selectedWorktree) {
         getSessions(selectedWorktree.path).then((sessions) => {
@@ -519,7 +568,8 @@ export default function WorktreeList({ onNavigate, onLaunch, onQuit }: WorktreeL
       <Box marginTop={1}>
         <Text color={theme.dim}>
           {displayWorktrees.length}{filter ? `/${worktrees.length}` : ""} worktrees
-          {"  "}sorted by: {sortBy}{"  "}
+          {"  "}sorted by: {sortBy}
+          {remoteFetching ? "  fetching remote..." : ""}{"  "}
         </Text>
         <Text color={modeColor} bold>-- {modeLabel} --</Text>
       </Box>
@@ -544,7 +594,7 @@ export default function WorktreeList({ onNavigate, onLaunch, onQuit }: WorktreeL
             focused={mode === "insert"}
 
             suffix={
-              mode === "insert" && canCreate && !creating && displayWorktrees.length === 0
+              mode === "insert" && canCreate && !creating && displayWorktrees.length === 0 && displayRemote.length === 0
                 ? `\u2192 ~/.worktui/${projectName}/${branchToFolder(filter)} (enter to create)`
                 : creating
                   ? "Creating..."
@@ -556,64 +606,110 @@ export default function WorktreeList({ onNavigate, onLaunch, onQuit }: WorktreeL
 
       {/* Worktree list */}
       <Box flexDirection="column">
-        {displayWorktrees.length === 0 ? (
+        {displayWorktrees.length === 0 && displayRemote.length === 0 && !remoteFetching ? (
           <Text color={theme.dim}>
             {filter ? "No matches." : "No worktrees found."}
           </Text>
         ) : (
-          displayWorktrees.map((wt, i) => {
-            const isSelected = i === selected;
-            const isActive = activePath ? wt.path === activePath : cwd.startsWith(wt.path);
-            const last = i === displayWorktrees.length - 1;
-            const first = i === 0;
-            const branchDisplay = truncate(wt.branch || "(detached)", 38);
-            const time = relativeTime(wt.commitDate);
-            const status = wt.isDirty ? "DIRTY" : "clean";
-            const statusColor = wt.isDirty ? theme.dirty : theme.clean;
-            const sessions =
-              wt.sessionCount > 0
-                ? `${wt.sessionCount} session${wt.sessionCount > 1 ? "s" : ""}`
-                : "\u2014";
+          <>
+            {displayWorktrees.map((wt, i) => {
+              const isSelected = i === selected;
+              const isActive = activePath ? wt.path === activePath : cwd.startsWith(wt.path);
+              const last = i === displayWorktrees.length - 1;
+              const first = i === 0;
+              const branchDisplay = truncate(wt.branch || "(detached)", 38);
+              const time = relativeTime(wt.commitDate);
+              const status = wt.isDirty ? "DIRTY" : "clean";
+              const statusColor = wt.isDirty ? theme.dirty : theme.clean;
+              const sessions =
+                wt.sessionCount > 0
+                  ? `${wt.sessionCount} session${wt.sessionCount > 1 ? "s" : ""}`
+                  : "\u2014";
 
-            // Git branch diagram prefix
-            let glyph: string;
-            if (first && last) {
-              glyph = "───";
-            } else if (first) {
-              glyph = "┌──";
-            } else if (last) {
-              glyph = "└──";
-            } else {
-              glyph = "├──";
-            }
+              // Git branch diagram prefix
+              let glyph: string;
+              if (first && last) {
+                glyph = "───";
+              } else if (first) {
+                glyph = "┌──";
+              } else if (last) {
+                glyph = "└──";
+              } else {
+                glyph = "├──";
+              }
 
-            // Cursor: ● for selected, ◆ for active, blank otherwise
-            let cursor: string;
-            if (isSelected) {
-              cursor = " ● ";
-            } else if (isActive) {
-              cursor = " ◆ ";
-            } else {
-              cursor = "   ";
-            }
+              // Cursor: ● for selected, ◆ for active, blank otherwise
+              let cursor: string;
+              if (isSelected) {
+                cursor = " ● ";
+              } else if (isActive) {
+                cursor = " ◆ ";
+              } else {
+                cursor = "   ";
+              }
 
-            return (
-              <Box key={wt.path}>
-                <Text color={isSelected ? theme.selected : isActive ? theme.active : undefined}>
-                  {cursor}
-                </Text>
-                <Text color={theme.spine}>
-                  {glyph}{" "}
-                </Text>
-                <Text color={isSelected ? theme.selectedText : isActive ? theme.activeText : theme.text} bold={isSelected || isActive}>
-                  {branchDisplay.padEnd(40)}
-                </Text>
-                <Text color={theme.dim}>{time.padEnd(10)}</Text>
-                <Text color={statusColor}>{status.padEnd(8)}</Text>
-                <Text color={theme.dim}>{sessions}</Text>
-              </Box>
-            );
-          })
+              return (
+                <Box key={wt.path}>
+                  <Text color={isSelected ? theme.selected : isActive ? theme.active : undefined}>
+                    {cursor}
+                  </Text>
+                  <Text color={theme.spine}>
+                    {glyph}{" "}
+                  </Text>
+                  <Text color={isSelected ? theme.selectedText : isActive ? theme.activeText : theme.text} bold={isSelected || isActive}>
+                    {branchDisplay.padEnd(40)}
+                  </Text>
+                  <Text color={theme.dim}>{time.padEnd(10)}</Text>
+                  <Text color={statusColor}>{status.padEnd(8)}</Text>
+                  <Text color={theme.dim}>{sessions}</Text>
+                </Box>
+              );
+            })}
+
+            {/* Remote branches section — only expand when user scrolls into it */}
+            {(displayRemote.length > 0 || remoteFetching) && (
+              <>
+                <Box marginTop={displayWorktrees.length > 0 ? 1 : 0}>
+                  <Text color={theme.dim}>
+                    {"   ── Remote "}
+                    {remoteFetching ? "(fetching...)" : `(${displayRemote.length})`}
+                    {selected < displayWorktrees.length && displayRemote.length > 0 ? " ↓" : ""}
+                    {" ──"}
+                  </Text>
+                </Box>
+                {(selected >= displayWorktrees.length || filter) && (
+                  <>
+                    {remoteCreating && (
+                      <Box>
+                        <Text color={theme.modeInsert}>   Creating worktree for <Text bold>{remoteCreating}</Text>...</Text>
+                      </Box>
+                    )}
+                    {displayRemote.slice(0, 10).map((branch, i) => {
+                      const globalIdx = displayWorktrees.length + i;
+                      const isSelected = globalIdx === selected;
+                      const prefix = isSelected ? " ● " : "   ";
+                      const time = relativeTime(branch.date);
+                      return (
+                        <Box key={branch.name}>
+                          <Text color={isSelected ? theme.selected : undefined}>
+                            {prefix}
+                          </Text>
+                          <Text color={isSelected ? theme.selectedText : theme.text} bold={isSelected}>
+                            {truncate(branch.name, 38).padEnd(44)}
+                          </Text>
+                          <Text color={theme.dim}>{time.padEnd(10)}</Text>
+                          <Text color={theme.dim}>{truncate(branch.author, 15)}</Text>
+                        </Box>
+                      );
+                    })}
+                    {displayRemote.length > 10 && (
+                      <Text color={theme.dim}>{"   ... and "}{displayRemote.length - 10}{" more (use / to filter)"}</Text>
+                    )}
+                  </>
+                )}
+              </>
+            )}
+          </>
         )}
       </Box>
 
@@ -656,7 +752,6 @@ export default function WorktreeList({ onNavigate, onLaunch, onQuit }: WorktreeL
                   { key: "c", label: "claude" },
                   { key: "r", label: "resume" },
                   { key: "g", label: "github" },
-                  { key: "f", label: "fetch" },
                   { key: "d", label: "delete" },
                   { key: "s", label: "sort" },
                   { key: "q", label: "quit" },
