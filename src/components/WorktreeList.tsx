@@ -256,12 +256,12 @@ export default function WorktreeList({ onNavigate, onLaunch, onQuit }: WorktreeL
     setCreating(false);
   };
 
-  const checkoutRemoteBranch = async (branch: string) => {
+  const checkoutRemoteBranch = async (branch: string, launchKind: "shell" | "claude" = "shell", resume?: boolean) => {
     setRemoteCreating(branch);
     try {
       const root = await getGitRoot();
       const path = await createWorktree(root, branch);
-      onLaunch({ kind: "shell", cwd: path });
+      onLaunch({ kind: launchKind, cwd: path, ...(resume ? { resume: true } : {}) });
     } catch (err: any) {
       setError((err as Error).message);
       setRemoteCreating(null);
@@ -400,6 +400,10 @@ export default function WorktreeList({ onNavigate, onLaunch, onQuit }: WorktreeL
         setBranchBase(selectedWorktree.branch);
         setBranchInput("");
         setMode("branch");
+      } else if (selectedRemoteBranch && !remoteCreating) {
+        setBranchBase(selectedRemoteBranch.name);
+        setBranchInput("");
+        setMode("branch");
       }
       return;
     }
@@ -411,6 +415,8 @@ export default function WorktreeList({ onNavigate, onLaunch, onQuit }: WorktreeL
     } else if (input === "c") {
       if (selectedWorktree) {
         onLaunch({ kind: "claude", cwd: selectedWorktree.path });
+      } else if (selectedRemoteBranch && !remoteCreating) {
+        checkoutRemoteBranch(selectedRemoteBranch.name, "claude");
       }
     } else if (input === "s") {
       setSortBy((prev) => {
@@ -419,12 +425,18 @@ export default function WorktreeList({ onNavigate, onLaunch, onQuit }: WorktreeL
         return keys[(idx + 1) % keys.length];
       });
     } else if (input === "o") {
-      if (selectedWorktree) onLaunch({ kind: "shell", cwd: selectedWorktree.path });
+      if (selectedWorktree) {
+        onLaunch({ kind: "shell", cwd: selectedWorktree.path });
+      } else if (selectedRemoteBranch && !remoteCreating) {
+        checkoutRemoteBranch(selectedRemoteBranch.name, "shell");
+      }
     } else if (input === "a") {
       if (selectedWorktree) {
         recordAccess(selectedWorktree.path);
         setActivePath(selectedWorktree.path);
         try { process.chdir(selectedWorktree.path); } catch {}
+      } else if (selectedRemoteBranch && !remoteCreating) {
+        checkoutRemoteBranch(selectedRemoteBranch.name, "shell");
       }
     } else if (input === "r") {
       if (selectedWorktree) {
@@ -433,6 +445,8 @@ export default function WorktreeList({ onNavigate, onLaunch, onQuit }: WorktreeL
             onLaunch({ kind: "claude", sessionId: sessions[0].sessionId, cwd: selectedWorktree.path });
           }
         });
+      } else if (selectedRemoteBranch && !remoteCreating) {
+        checkoutRemoteBranch(selectedRemoteBranch.name, "claude", true);
       }
     } else if (input === "g") {
       if (selectedWorktree) {
@@ -449,6 +463,13 @@ export default function WorktreeList({ onNavigate, onLaunch, onQuit }: WorktreeL
             }
           });
         }
+      } else if (selectedRemoteBranch) {
+        // Open the PR for this remote branch (if any)
+        getGitRoot().then((root) => {
+          getPRUrl(root, selectedRemoteBranch.name).then((url) => {
+            if (url) Bun.spawn(["open", url]);
+          });
+        });
       }
     }
   });
