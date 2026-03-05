@@ -1,4 +1,4 @@
-import { Box, Text, useInput } from "ink";
+import { Box, Text, useInput, useStdout } from "ink";
 import { useState, useEffect, useMemo } from "react";
 import { readdirSync, statSync, mkdirSync, writeFileSync, readFileSync } from "fs";
 import { join, basename } from "path";
@@ -48,6 +48,19 @@ export default function WorktreeList({ onNavigate, onLaunch, onQuit }: WorktreeL
   const [deleting, setDeleting] = useState(false);
   const [deleteProgress, setDeleteProgress] = useState("");
   const [deleteResult, setDeleteResult] = useState<string | null>(null);
+
+  const { stdout } = useStdout();
+  const cols = stdout?.columns ?? 80;
+  // Adaptive layout: prefix is cursor(4) + glyph(4) = 8 chars (+ padding from Box)
+  const prefixW = 8;
+  const availW = cols - prefixW - 2; // -2 for Box padding
+  const showTime = availW > 40;
+  const showStatus = availW > 50;
+  const showSessions = availW > 60;
+  const timeW = showTime ? 10 : 0;
+  const statusW = showStatus ? 8 : 0;
+  const sessionsW = showSessions ? 12 : 0;
+  const branchW = Math.max(10, availW - timeW - statusW - sessionsW);
 
   const loadRemoteBranches = async (root: string, wts: Worktree[]) => {
     setRemoteFetching(true);
@@ -615,7 +628,7 @@ export default function WorktreeList({ onNavigate, onLaunch, onQuit }: WorktreeL
     const modeColor = mode === "insert" ? theme.modeInsert : theme.modeNormal;
 
     return (
-      <Box flexDirection="column" padding={1}>
+      <Box flexDirection="column" padding={1} width={cols}>
         <Box flexDirection="column">
           <Box><Text color={theme.logo}>{"        _   "}</Text></Box>
           <Box><Text color={theme.logo}>{"  _ _ _| |_ "}</Text><Text color={theme.bold} bold> worktui</Text></Box>
@@ -707,7 +720,7 @@ export default function WorktreeList({ onNavigate, onLaunch, onQuit }: WorktreeL
   const modeColor = mode === "delete" ? theme.error : mode !== "normal" ? theme.modeInsert : theme.modeNormal;
 
   return (
-    <Box flexDirection="column" padding={1}>
+    <Box flexDirection="column" padding={1} width={cols}>
       <Box flexDirection="column">
         <Box><Text color={theme.logo}>{"        _   "}</Text></Box>
         <Box><Text color={theme.logo}>{"  _ _ _| |_ "}</Text><Text color={theme.bold} bold> worktui</Text></Box>
@@ -766,7 +779,7 @@ export default function WorktreeList({ onNavigate, onLaunch, onQuit }: WorktreeL
               const isActive = activePath ? wt.path === activePath : cwd.startsWith(wt.path);
               const last = i === displayWorktrees.length - 1;
               const first = i === 0;
-              const branchDisplay = truncate(wt.branch || "(detached)", 38);
+              const branchDisplay = truncate(wt.branch || "(detached)", branchW - 2);
               const time = relativeTime(wt.commitDate);
               const status = wt.isDirty ? "DIRTY" : "clean";
               const statusColor = wt.isDirty ? theme.dirty : theme.clean;
@@ -817,11 +830,11 @@ export default function WorktreeList({ onNavigate, onLaunch, onQuit }: WorktreeL
                     {glyph}{" "}
                   </Text>
                   <Text color={isSelected ? theme.selectedText : isActive ? theme.activeText : theme.text} bold={isSelected || isActive}>
-                    {branchDisplay.padEnd(40)}
+                    {branchDisplay.padEnd(branchW)}
                   </Text>
-                  <Text color={theme.dim}>{time.padEnd(10)}</Text>
-                  <Text color={statusColor}>{status.padEnd(8)}</Text>
-                  <Text color={theme.dim}>{sessions}</Text>
+                  {showTime && <Text color={theme.dim}>{time.padEnd(10)}</Text>}
+                  {showStatus && <Text color={statusColor}>{status.padEnd(8)}</Text>}
+                  {showSessions && <Text color={theme.dim}>{sessions}</Text>}
                 </Box>
               );
             })}
@@ -855,10 +868,10 @@ export default function WorktreeList({ onNavigate, onLaunch, onQuit }: WorktreeL
                             {prefix}
                           </Text>
                           <Text color={isSelected ? theme.selectedText : theme.text} bold={isSelected}>
-                            {truncate(branch.name, 38).padEnd(44)}
+                            {truncate(branch.name, branchW - 2).padEnd(branchW + 4)}
                           </Text>
-                          <Text color={theme.dim}>{time.padEnd(10)}</Text>
-                          <Text color={theme.dim}>{truncate(branch.author, 15)}</Text>
+                          {showTime && <Text color={theme.dim}>{time.padEnd(10)}</Text>}
+                          {showStatus && <Text color={theme.dim}>{truncate(branch.author, 15)}</Text>}
                         </Box>
                       );
                     })}
@@ -880,7 +893,7 @@ export default function WorktreeList({ onNavigate, onLaunch, onQuit }: WorktreeL
             {worktrees.filter((wt) => deleteToggled.has(wt.path)).map((wt) => (
               <Box key={wt.path}>
                 <Text color={theme.dim}>{"   "}</Text>
-                <Text color={wt.isDirty ? theme.dirty : theme.text}>{wt.branch}</Text>
+                <Text color={wt.isDirty ? theme.dirty : theme.text}>{truncate(wt.branch, cols - 16)}</Text>
                 {wt.isDirty && <Text color={theme.dirty}> (dirty)</Text>}
               </Box>
             ))}
