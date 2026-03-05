@@ -52,9 +52,22 @@ Shown when `wt` is launched outside a git repo.
 | c | New Claude session |
 | r | Resume latest Claude session |
 | g | GitHub — open PR, or create-PR page if none (repo homepage for main) |
-| d | Delete worktree |
+| d | Delete — enter batch delete mode |
 | s | Cycle sort (recent/date/branch/status) |
 | q | Quit |
+
+### Delete mode
+
+Entered by pressing `d` in the worktree list. Multi-select worktrees for deletion.
+
+| Key | Action |
+|-----|--------|
+| j/k | Navigate |
+| Space | Toggle selected worktree |
+| a | Toggle all (non-main) |
+| b | Toggle "also delete branches" |
+| Enter | Confirm deletion |
+| Esc | Cancel |
 
 ### Worktree detail (sessions)
 

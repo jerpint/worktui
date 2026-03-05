@@ -3,7 +3,7 @@ import { useState, useEffect, useMemo } from "react";
 import { readdirSync, statSync, mkdirSync, writeFileSync, readFileSync } from "fs";
 import { join, basename } from "path";
 import type { Worktree, Project, View, LaunchTarget } from "../types.js";
-import { listWorktrees, getGitRoot, createWorktree, getPRUrl, getRepoUrl, fetchRemote, listRemoteBranches } from "../git.js";
+import { listWorktrees, getGitRoot, createWorktree, getPRUrl, getRepoUrl, fetchRemote, listRemoteBranches, removeWorktree, deleteBranch } from "../git.js";
 import type { RemoteBranch } from "../git.js";
 import { getSessions } from "../sessions.js";
 import { listProjects } from "../projects.js";
@@ -14,7 +14,7 @@ import SearchBar from "./SearchBar.js";
 import { theme } from "../theme.js";
 
 type SortKey = "recent" | "date" | "branch" | "status";
-type Mode = "insert" | "normal" | "branch";
+type Mode = "insert" | "normal" | "branch" | "delete";
 
 interface WorktreeListProps {
   onNavigate: (view: View) => void;
@@ -40,6 +40,14 @@ export default function WorktreeList({ onNavigate, onLaunch, onQuit }: WorktreeL
   const [remoteBranches, setRemoteBranches] = useState<RemoteBranch[]>([]);
   const [remoteFetching, setRemoteFetching] = useState(false);
   const [remoteCreating, setRemoteCreating] = useState<string | null>(null);
+  const [deleteToggled, setDeleteToggled] = useState<Set<string>>(new Set());
+  const [deleteBranches, setDeleteBranches] = useState(false);
+  const [deleteConfirm, setDeleteConfirm] = useState(false);
+  const [confirmRow, setConfirmRow] = useState<0 | 1>(1); // 0=branches checkbox, 1=No/Yes
+  const [confirmYes, setConfirmYes] = useState(false);
+  const [deleting, setDeleting] = useState(false);
+  const [deleteProgress, setDeleteProgress] = useState("");
+  const [deleteResult, setDeleteResult] = useState<string | null>(null);
 
   const loadRemoteBranches = async (root: string, wts: Worktree[]) => {
     setRemoteFetching(true);
@@ -175,7 +183,7 @@ export default function WorktreeList({ onNavigate, onLaunch, onQuit }: WorktreeL
   const visibleRemoteCount = Math.min(displayRemote.length, 10);
 
   // Clamp selection when filtered list shrinks
-  const listLen = inProjectMode ? displayProjects.length : displayWorktrees.length + visibleRemoteCount;
+  const listLen = inProjectMode ? displayProjects.length : displayWorktrees.length + (mode === "delete" ? 0 : visibleRemoteCount);
   useEffect(() => {
     if (selected >= listLen && listLen > 0) {
       setSelected(listLen - 1);
@@ -268,6 +276,44 @@ export default function WorktreeList({ onNavigate, onLaunch, onQuit }: WorktreeL
     }
   };
 
+  const doDelete = async () => {
+    setDeleting(true);
+    const targets = worktrees.filter((wt) => deleteToggled.has(wt.path));
+    let done = 0;
+    const errors: string[] = [];
+    try {
+      const gitRoot = await getGitRoot();
+      for (const wt of targets) {
+        setDeleteProgress(`Deleting ${done + 1}/${targets.length}: ${wt.branch}...`);
+        try {
+          await removeWorktree(gitRoot, wt.path, wt.isDirty);
+          if (deleteBranches && wt.branch) {
+            try { await deleteBranch(gitRoot, wt.branch, true); } catch {}
+          }
+          done++;
+        } catch (err: any) {
+          errors.push(`${wt.branch}: ${err.message}`);
+          done++;
+        }
+      }
+    } catch (err: any) {
+      errors.push(err.message);
+    }
+    const deleted = targets.length - errors.length;
+    const msg = errors.length
+      ? `Deleted ${deleted}/${targets.length}. Errors: ${errors.join("; ")}`
+      : `Deleted ${deleted} worktree${deleted !== 1 ? "s" : ""}${deleteBranches ? " + branches" : ""}`;
+    setDeleteResult(msg);
+    setDeleteToggled(new Set());
+    setDeleteBranches(false);
+    setDeleteConfirm(false);
+    setDeleteProgress("");
+    setDeleting(false);
+    setMode("normal");
+    setTimeout(() => setDeleteResult(null), 4000);
+    load();
+  };
+
   useInput((input, key) => {
     if (creating || remoteCreating) return;
 
@@ -283,7 +329,9 @@ export default function WorktreeList({ onNavigate, onLaunch, onQuit }: WorktreeL
     }
     if (key.upArrow) {
       if (mode === "branch") return;
-      if (mode === "normal" && selected === 0) {
+      if (mode === "delete") {
+        navigate("up");
+      } else if (mode === "normal" && selected === 0) {
         setMode("insert");
       } else if (mode === "normal") {
         navigate("up");
@@ -308,6 +356,85 @@ export default function WorktreeList({ onNavigate, onLaunch, onQuit }: WorktreeL
       }
       if (input && !key.ctrl && !key.meta) {
         setBranchInput((f) => f + input);
+      }
+      return;
+    }
+
+    if (mode === "delete") {
+      if (deleting) return;
+
+      // Confirmation screen
+      if (deleteConfirm) {
+        if (key.escape) {
+          setDeleteConfirm(false);
+          return;
+        }
+        if (input === "j" || key.downArrow) {
+          setConfirmRow((r) => (r === 0 ? 1 : 0));
+          return;
+        }
+        if (input === "k" || key.upArrow) {
+          setConfirmRow((r) => (r === 0 ? 1 : 0));
+          return;
+        }
+        if (confirmRow === 1 && (input === "h" || input === "l" || key.leftArrow || key.rightArrow)) {
+          setConfirmYes((v) => !v);
+          return;
+        }
+        if (input === " " || key.return) {
+          if (confirmRow === 0) {
+            setDeleteBranches((v) => !v);
+          } else if (confirmYes) {
+            doDelete();
+          } else {
+            setDeleteConfirm(false);
+          }
+          return;
+        }
+        return;
+      }
+
+      // Selection screen
+      if (key.escape) {
+        setDeleteToggled(new Set());
+        setDeleteBranches(false);
+        setMode("normal");
+        return;
+      }
+      if (input === "j") { navigate("down"); return; }
+      if (input === "k") { navigate("up"); return; }
+      if (input === " ") {
+        const wt = displayWorktrees[selected];
+        if (wt && !wt.isMain) {
+          setDeleteToggled((prev) => {
+            const next = new Set(prev);
+            if (next.has(wt.path)) next.delete(wt.path);
+            else next.add(wt.path);
+            return next;
+          });
+        }
+        return;
+      }
+      if (input === "a") {
+        setDeleteToggled((prev) => {
+          const nonMain = displayWorktrees.filter((wt) => !wt.isMain);
+          const allSelected = nonMain.every((wt) => prev.has(wt.path));
+          if (allSelected) return new Set();
+          return new Set(nonMain.map((wt) => wt.path));
+        });
+        return;
+      }
+      if (input === "b") {
+        setDeleteBranches((v) => !v);
+        return;
+      }
+      if (input === "d" || key.return) {
+        if (deleteToggled.size > 0) {
+          setConfirmRow(1);
+          setConfirmYes(false);
+          setDeleteConfirm(true);
+        }
+        return;
       }
       return;
     }
@@ -409,8 +536,9 @@ export default function WorktreeList({ onNavigate, onLaunch, onQuit }: WorktreeL
     }
 
     if (input === "d") {
+      setMode("delete");
       if (selectedWorktree && !selectedWorktree.isMain) {
-        onNavigate({ kind: "delete", worktree: selectedWorktree });
+        setDeleteToggled(new Set([selectedWorktree.path]));
       }
     } else if (input === "c") {
       if (selectedWorktree) {
@@ -575,8 +703,8 @@ export default function WorktreeList({ onNavigate, onLaunch, onQuit }: WorktreeL
   }
 
   const cwd = process.cwd();
-  const modeLabel = mode === "insert" ? "INSERT" : mode === "branch" ? "BRANCH" : "NORMAL";
-  const modeColor = mode !== "normal" ? theme.modeInsert : theme.modeNormal;
+  const modeLabel = mode === "insert" ? "INSERT" : mode === "branch" ? "BRANCH" : mode === "delete" ? "DELETE" : "NORMAL";
+  const modeColor = mode === "delete" ? theme.error : mode !== "normal" ? theme.modeInsert : theme.modeNormal;
 
   return (
     <Box flexDirection="column" padding={1}>
@@ -659,9 +787,16 @@ export default function WorktreeList({ onNavigate, onLaunch, onQuit }: WorktreeL
                 glyph = "├──";
               }
 
-              // Cursor: ● for selected, ◆ for active, blank otherwise
+              // Cursor: checkboxes in delete mode, ● for selected, ◆ for active
               let cursor: string;
-              if (isSelected) {
+              if (mode === "delete") {
+                if (wt.isMain) {
+                  cursor = " [-]";
+                } else {
+                  const checked = deleteToggled.has(wt.path);
+                  cursor = checked ? " [x]" : " [ ]";
+                }
+              } else if (isSelected) {
                 cursor = " ● ";
               } else if (isActive) {
                 cursor = " ◆ ";
@@ -669,9 +804,13 @@ export default function WorktreeList({ onNavigate, onLaunch, onQuit }: WorktreeL
                 cursor = "   ";
               }
 
+              const cursorColor = mode === "delete" && wt.isMain
+                ? theme.dim
+                : isSelected ? theme.selected : isActive ? theme.active : undefined;
+
               return (
                 <Box key={wt.path}>
-                  <Text color={isSelected ? theme.selected : isActive ? theme.active : undefined}>
+                  <Text color={cursorColor}>
                     {cursor}
                   </Text>
                   <Text color={theme.spine}>
@@ -687,8 +826,8 @@ export default function WorktreeList({ onNavigate, onLaunch, onQuit }: WorktreeL
               );
             })}
 
-            {/* Remote branches section — only expand when user scrolls into it */}
-            {(displayRemote.length > 0 || remoteFetching) && (
+            {/* Remote branches section — hidden in delete mode */}
+            {mode !== "delete" && (displayRemote.length > 0 || remoteFetching) && (
               <>
                 <Box marginTop={displayWorktrees.length > 0 ? 1 : 0}>
                   <Text color={theme.dim}>
@@ -734,16 +873,69 @@ export default function WorktreeList({ onNavigate, onLaunch, onQuit }: WorktreeL
         )}
       </Box>
 
-      <Box marginTop={1} height={1}>
-        {mode === "normal" && selectedWorktree ? (
+      <Box marginTop={1} flexDirection="column">
+        {mode === "delete" && deleteConfirm ? (
           <>
+            <Text color={theme.error} bold> Delete {deleteToggled.size} worktree{deleteToggled.size !== 1 ? "s" : ""}?</Text>
+            {worktrees.filter((wt) => deleteToggled.has(wt.path)).map((wt) => (
+              <Box key={wt.path}>
+                <Text color={theme.dim}>{"   "}</Text>
+                <Text color={wt.isDirty ? theme.dirty : theme.text}>{wt.branch}</Text>
+                {wt.isDirty && <Text color={theme.dirty}> (dirty)</Text>}
+              </Box>
+            ))}
+            <Box marginTop={1}>
+              <Text color={confirmRow === 0 ? theme.selected : theme.dim}>
+                {confirmRow === 0 ? " > " : "   "}
+              </Text>
+              <Text color={confirmRow === 0 ? theme.selected : deleteBranches ? theme.accent : theme.dim}>
+                [{deleteBranches ? "x" : " "}]
+              </Text>
+              <Text color={confirmRow === 0 ? theme.text : theme.dim}> Also delete local branches</Text>
+            </Box>
+            <Box marginTop={1}>
+              <Text color={confirmRow === 1 ? theme.selected : theme.dim}>
+                {confirmRow === 1 ? " > " : "   "}
+              </Text>
+              <Text
+                color={!confirmYes ? theme.error : undefined}
+                bold={!confirmYes || confirmRow === 1}
+                inverse={!confirmYes && confirmRow === 1}
+              >
+                {" No "}
+              </Text>
+              <Text>  </Text>
+              <Text
+                color={confirmYes ? theme.accent : undefined}
+                bold={confirmYes || confirmRow === 1}
+                inverse={confirmYes && confirmRow === 1}
+              >
+                {" Yes "}
+              </Text>
+            </Box>
+            {deleting && <Text color={theme.modeInsert}> {deleteProgress}</Text>}
+          </>
+        ) : mode === "delete" ? (
+          <>
+            <Box>
+              <Text color={theme.error} bold>{deleteToggled.size}</Text>
+              <Text color={theme.dim}> selected</Text>
+              {Array.from(deleteToggled).some((p) => worktrees.find((wt) => wt.path === p)?.isDirty) && (
+                <Text color={theme.dirty}> (includes dirty worktrees — will force delete)</Text>
+              )}
+            </Box>
+          </>
+        ) : deleteResult ? (
+          <Text color={theme.accent}>{" "}{deleteResult}</Text>
+        ) : mode === "normal" && selectedWorktree ? (
+          <Box height={1}>
             <Text color={theme.dim}>{" claude: "}</Text>
             <Text color={theme.dim} italic>
               {selectedWorktree.lastSessionSummary
                 ? truncate(selectedWorktree.lastSessionSummary, 60)
                 : "\u2014"}
             </Text>
-          </>
+          </Box>
         ) : (
           <Text color={theme.dim}>{" "}</Text>
         )}
@@ -751,32 +943,48 @@ export default function WorktreeList({ onNavigate, onLaunch, onQuit }: WorktreeL
 
       <StatusBar
         hints={
-          mode === "branch"
+          mode === "delete" && deleteConfirm
             ? [
-                { key: "\u23CE", label: "create" },
-                { key: "esc", label: "cancel" },
+                { key: "\u2191\u2193", label: "navigate" },
+                { key: "\u2190\u2192", label: "yes/no" },
+                { key: "\u23CE/space", label: "toggle" },
+                { key: "esc", label: "back" },
               ]
-            : mode === "insert"
+            : mode === "delete"
               ? [
-                  { key: "\u2191\u2193", label: "navigate" },
-                  { key: "\u23CE", label: canCreate ? "create" : "open" },
-                  { key: "esc", label: "normal mode" },
+                  { key: "j/k", label: "navigate" },
+                  { key: "space", label: "toggle" },
+                  { key: "a", label: "all" },
+                  { key: "b", label: "branches" },
+                  { key: "d", label: `delete(${deleteToggled.size})` },
+                  { key: "esc", label: "cancel" },
                 ]
-              : [
-                  { key: "/", label: "filter/create" },
-                  { key: "\u2191\u2193", label: "navigate" },
-                  { key: "\u2190", label: "projects" },
-                  { key: "\u2192", label: "sessions" },
-                  { key: "a", label: "activate" },
-                  { key: "o", label: "shell" },
-                  { key: "b", label: "branch" },
-                  { key: "c", label: "claude" },
-                  { key: "r", label: "resume" },
-                  { key: "g", label: "github" },
-                  { key: "d", label: "delete" },
-                  { key: "s", label: "sort" },
-                  { key: "q", label: "quit" },
+            : mode === "branch"
+              ? [
+                  { key: "\u23CE", label: "create" },
+                  { key: "esc", label: "cancel" },
                 ]
+              : mode === "insert"
+                ? [
+                    { key: "\u2191\u2193", label: "navigate" },
+                    { key: "\u23CE", label: canCreate ? "create" : "open" },
+                    { key: "esc", label: "normal mode" },
+                  ]
+                : [
+                    { key: "/", label: "filter/create" },
+                    { key: "\u2191\u2193", label: "navigate" },
+                    { key: "\u2190", label: "projects" },
+                    { key: "\u2192", label: "sessions" },
+                    { key: "a", label: "activate" },
+                    { key: "o", label: "shell" },
+                    { key: "b", label: "branch" },
+                    { key: "c", label: "claude" },
+                    { key: "r", label: "resume" },
+                    { key: "g", label: "github" },
+                    { key: "d", label: "delete" },
+                    { key: "s", label: "sort" },
+                    { key: "q", label: "quit" },
+                  ]
         }
       />
     </Box>

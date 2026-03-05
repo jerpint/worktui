@@ -3,7 +3,6 @@ import { useState } from "react";
 import type { View, LaunchTarget } from "../types.js";
 import WorktreeList from "./WorktreeList.js";
 import CreateWorktree from "./CreateWorktree.js";
-import DeleteConfirm from "./DeleteConfirm.js";
 import Cleanup from "./Cleanup.js";
 
 interface AppProps {
@@ -24,8 +23,6 @@ export default function App({ initialView, onLaunch }: AppProps) {
       return <WorktreeList onNavigate={navigate} onLaunch={onLaunch} onQuit={quit} />;
     case "create":
       return <CreateWorktree onBack={goHome} onQuit={quit} />;
-    case "delete":
-      return <DeleteConfirm worktree={view.worktree} onBack={goHome} onQuit={quit} />;
     case "cleanup":
       return <Cleanup onBack={goHome} onQuit={quit} />;
   }

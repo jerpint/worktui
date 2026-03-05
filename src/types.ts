@@ -30,7 +30,6 @@ export interface Project {
 export type View =
   | { kind: "list" }
   | { kind: "create" }
-  | { kind: "delete"; worktree: Worktree }
   | { kind: "cleanup" };
 
 export type LaunchTarget =
