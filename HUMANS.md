@@ -17,10 +17,21 @@ source ~/worktui/wt.sh
 ## Usage
 
 ```bash
-wt                            # Launch TUI (worktree list, or project picker if outside a git repo)
-wt -b feature/my-branch       # Create worktree (CLI mode)
-wt -b feature/my-branch --pr  # Create worktree + draft PR
-wt cleanup                    # Jump to cleanup view
+# Interactive (TUI)
+wt                                # Launch TUI (worktree list, or project picker)
+wt cleanup                        # Jump to cleanup view
+
+# Non-interactive (CLI)
+wt list [--json]                  # List worktrees
+wt create <branch> [--pr]        # Create worktree (also: wt -b <branch>)
+wt delete <branch> [--force] [--branch]  # Delete worktree + optionally its branch
+wt sessions [<branch>] [--json]  # List Claude sessions for a worktree
+wt projects [--json]             # List registered projects
+wt status                        # Current worktree info
+wt clean [--dry-run]             # Remove all clean (non-dirty) worktrees
+wt remote [--json]               # List remote-only branches
+wt pr <branch>                   # Show PR URL for branch
+wt help                          # Show help
 ```
 
 Running `wt` from any git repo automatically registers it so it shows up in the project picker.

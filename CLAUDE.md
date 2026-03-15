@@ -12,12 +12,14 @@ Worktree management TUI with Claude session integration.
 
 ```
 src/
-  index.tsx               # Entry: parse args, CLI mode or TUI mode
+  index.tsx               # Entry: route to CLI or TUI
+  cli.ts                  # CLI subcommands (list, create, delete, sessions, etc.)
   types.ts                # Worktree, ClaudeSession, Project, View types
   git.ts                  # All git operations via Bun.spawn
   sessions.ts             # Claude session discovery (~/.claude/projects/)
   projects.ts             # Project discovery (~/.worktui/ subdirs)
   utils.ts                # relativeTime, truncate, path encoding
+  access.ts               # Last-accessed timestamps per worktree
   components/
     App.tsx               # View router + global keybindings
     WorktreeList.tsx      # Home: project picker OR worktree list
@@ -31,10 +33,21 @@ src/
 ## Usage
 
 ```bash
-worktree                          # Launch TUI (worktree list, or project picker if not in a git repo)
-worktree -b feature/my-branch     # CLI: create worktree, print path, exit
-worktree -b feature/my-branch --pr  # CLI: create worktree + draft PR, exit
-worktree cleanup                  # Launch TUI directly into cleanup view
+# TUI (interactive)
+wt                                # Launch TUI (worktree list, or project picker)
+wt cleanup                        # Launch TUI directly into cleanup view
+
+# CLI (scriptable, non-interactive)
+wt list [--json]                  # List worktrees
+wt create <branch> [--pr]        # Create worktree (alias: -b)
+wt delete <branch> [--force] [--branch]  # Delete worktree
+wt sessions [<branch>] [--json]  # List Claude sessions
+wt projects [--json]             # List registered projects
+wt status                        # Current worktree info
+wt clean [--dry-run]             # Remove all clean worktrees
+wt remote [--json]               # List remote-only branches
+wt pr <branch>                   # Show PR URL for branch
+wt help                          # Show help
 ```
 
 ## Setup
@@ -51,7 +64,7 @@ worktree cleanup                  # Launch TUI directly into cleanup view
 
 ## Design Principles
 
-- **Two modes** — CLI mode (`-b`) for scripting, TUI mode for interactive use
+- **Two modes** — CLI subcommands for scripting, TUI mode for interactive use
 - **Repo-agnostic** — detects git root from CWD, worktrees live in `~/.worktui/<project>/` (override with `WORKTUI_DIR`)
 - **Fast by default** — parallel dirty checks, session index fast path
 - **Vim navigation** — j/k/h/l throughout all views
@@ -61,10 +74,12 @@ worktree cleanup                  # Launch TUI directly into cleanup view
 
 ### Data Flow
 ```
-index.tsx (CLI entry)
-  ├─ CLI mode: -b branch [--pr]
-  │   → git.createWorktree() + git.createDraftPR()
-  │   → write /tmp/worktui-launch → exit
+index.tsx (entry)
+  ├─ cli.ts → runCLI(args)
+  │   ├─ list/create/delete/sessions/projects/status/clean/remote/pr
+  │   │   → reuses git.ts, sessions.ts, projects.ts, access.ts
+  │   │   → stdout output (tables or JSON)
+  │   └─ returns false if not a CLI command
   │
   └─ TUI mode: render <App>
       └─ App (view router, View state machine)
