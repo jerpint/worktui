@@ -174,10 +174,16 @@ export async function createWorktree(
       if (exitCode !== 0)
         throw new Error(`Failed to create worktree: ${stderr}`);
     } else {
-      // New branch
-      const cmd = ["git", "worktree", "add", worktreePath, "-b", branch];
-      if (startPoint) cmd.push(startPoint);
-      const { exitCode, stderr } = await run(cmd, gitRoot);
+      // New branch — default to origin/main so we don't inherit
+      // whatever HEAD the main worktree happens to be on
+      if (!startPoint) {
+        await run(["git", "fetch", "origin", "main"], gitRoot);
+        startPoint = "origin/main";
+      }
+      const { exitCode, stderr } = await run(
+        ["git", "worktree", "add", worktreePath, "-b", branch, startPoint],
+        gitRoot
+      );
       if (exitCode !== 0)
         throw new Error(`Failed to create worktree: ${stderr}`);
     }
