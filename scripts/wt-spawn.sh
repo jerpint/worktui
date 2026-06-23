@@ -56,6 +56,9 @@ tmux set-environment -t "$SESSION" WT_SPAWN_NAME "$BRANCH"
 WNAME="$(printf '%s' "$BRANCH" | tr '/ ' '--')"
 read -r WIN CLAUDE_PANE < <(tmux new-window -d -t "$SESSION:" -n "$WNAME" -c "$WT_PATH" \
   -P -F '#{window_index} #{pane_id}' "exec ${SHELL:-/bin/zsh}")
+# Tag the pane as a worktui agent so wt-fleet can find it reliably (this survives
+# the pane's running command changing while Claude shells out to tools).
+tmux set-option -p -t "$CLAUDE_PANE" @wt_agent "$BRANCH"
 
 # 4. split → right pane (shell, or a watcher via --right)
 if [[ -n "$RIGHT_CMD" ]]; then
