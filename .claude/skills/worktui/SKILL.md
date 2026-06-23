@@ -9,7 +9,12 @@ Orchestrate isolated work sessions. Each session = one `wt` (worktui) worktree +
 tab split into a **seeded Claude pane** and a **shell pane**. You are the conductor: spawn,
 seed, send tasks, read output, tear down — all from your own session via these scripts.
 
-**Requires:** running inside tmux (`$TMUX` set). Scripts live in `~/worktui/scripts/`.
+**Prerequisites:**
+- **worktui must be installed** at `~/worktui` — the scripts call `bun run ~/worktui/src/index.tsx`
+  to create/delete worktrees. If `~/worktui` is missing or `bun` isn't on PATH, none of this works.
+  See `~/worktui/HUMANS.md` for setup (`bun install` + source `wt.sh`).
+- **Must be running inside tmux** — the scripts drive the tmux server to open tabs/panes.
+- Scripts live in `~/worktui/scripts/`.
 
 ## 1. Spawn a session
 
