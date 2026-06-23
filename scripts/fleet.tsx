@@ -149,6 +149,12 @@ function AgentCard({ agent, frame, selected }: { agent: Agent; frame: number; se
   const glyph = glyphFor(agent.status, frame);
   const lines = agent.preview.slice(-CARD_LINES);
   const padded = [...lines, ...Array(Math.max(0, CARD_LINES - lines.length)).fill("")];
+  // Brightness by state: active sessions read bright, quiet ones recede. The
+  // latest line (most recent activity) gets emphasis so you see motion/recency.
+  const baseColor = agent.status === "working" ? theme.text : theme.dim;
+  const lastColor =
+    agent.status === "working" ? theme.active : agent.status === "blocked" ? theme.warning : theme.text;
+  const lastIdx = lines.length - 1;
   return (
     <Box
       flexDirection="column"
@@ -168,11 +174,15 @@ function AgentCard({ agent, frame, selected }: { agent: Agent; frame: number; se
         <Text color={meta.color}>{meta.label}</Text>
       </Box>
       <Box flexDirection="column">
-        {padded.map((l, i) => (
-          <Text key={i} color={l ? theme.dim : theme.spine} wrap="truncate-end">
-            {l || " "}
-          </Text>
-        ))}
+        {padded.map((l, i) => {
+          if (!l) return <Text key={i}> </Text>;
+          const isLast = i === lastIdx;
+          return (
+            <Text key={i} color={isLast ? lastColor : baseColor} bold={isLast} wrap="truncate-end">
+              {l}
+            </Text>
+          );
+        })}
       </Box>
     </Box>
   );
