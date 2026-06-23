@@ -2,11 +2,10 @@
 /**
  * worktui fleet — a live Ink dashboard of all worktui agents.
  *
- * Reads every tmux pane tagged with the @wt_agent option (set by wt-spawn.sh),
- * peeks at its recent output to guess status, and renders a delightful,
- * Nord-themed preview wall that refreshes on an interval.
+ * Layout: a status sidebar (every agent + its current action, at a glance) next
+ * to a wall of live preview cards (all agents visible at once). Reads every tmux
+ * pane tagged @wt_agent (set by wt-spawn.sh) and refreshes on an interval.
  *
- * Run it standalone (e.g. in the hq overview pane):
  *   bun run ~/worktui/scripts/fleet.tsx
  */
 import React, { useEffect, useState } from "react";
@@ -20,10 +19,14 @@ interface Agent {
   branch: string; // @wt_agent value
   window: string; // tmux window name
   status: Status;
-  preview: string[]; // recent activity lines
+  note: string; // human-friendly current action ("Bash(bun test)", the approval Q, …)
+  preview: string[]; // recent activity lines for the card
 }
 
 const SPINNER = ["⠋", "⠙", "⠹", "⠸", "⠼", "⠴", "⠦", "⠧", "⠇", "⠏"];
+const SIDEBAR_W = 36;
+const CARD_W = 50;
+const CARD_LINES = 5;
 
 const STATUS_META: Record<Status, { glyph: string; color: string; label: string }> = {
   working: { glyph: "", color: theme.active, label: "churning" },
@@ -38,21 +41,61 @@ function tmux(args: string[]): string {
 }
 
 function classify(peek: string): Status {
-  if (/esc to interrupt/.test(peek)) return "working";
-  if (/Do you want|proceed\?|❯ 1\.|1\. Yes|Allow .* to/.test(peek)) return "blocked";
+  // Current state lives at the bottom of the pane — only trust the tail so old
+  // scrollback (a past "esc to interrupt") can't masquerade as live activity.
+  const tail = peek.split("\n").slice(-12).join("\n");
+  // Working signals, any of:
+  //  - "esc to interrupt" in the status line
+  //  - a live elapsed counter "(2s · …)"  (a finished turn reads "… for 7s", no parens)
+  //  - a spinner line: a spinner glyph followed by an "…ing…" verb. This catches the
+  //    first frames too, before the elapsed counter appears.
+  if (
+    /esc to interrupt/.test(tail) ||
+    /\(\d+s\b/.test(tail) ||
+    /^\s*[✻✶✳✢✺∗◇◆●∘·•][^\n]*…/m.test(tail)
+  )
+    return "working";
+  if (/Do you want|proceed\?|❯ 1\.|1\. Yes|Allow .* to/.test(tail)) return "blocked";
   if (/Claude Code|⏵⏵|\/effort|context left|tokens/.test(peek)) return "idle";
   return "exited";
 }
 
-// Pull the last few meaningful lines (drop blanks, box borders, the input prompt).
+// The most recent "⏺ …" marker is Claude's latest action (a tool call or reply).
+function lastAction(peek: string): string {
+  const lines = peek.split("\n").map((l) => l.trim());
+  for (let i = lines.length - 1; i >= 0; i--) {
+    if (/^⏺\s+/.test(lines[i])) return lines[i].replace(/^⏺\s+/, "");
+  }
+  return "";
+}
+
+// A short, human-friendly status note per agent.
+function statusNote(peek: string, status: Status): string {
+  if (status === "blocked") {
+    const q = peek.split("\n").reverse().find((l) => /Do you want|proceed\?|Allow .* to/.test(l));
+    return (q ? q.trim() : "waiting for approval").slice(0, 30);
+  }
+  const act = lastAction(peek);
+  if (status === "working") return (act || "thinking…").slice(0, 30);
+  if (status === "idle") return (act || "standing by").slice(0, 30);
+  return "exited";
+}
+
+// Keep only real activity lines — drop blanks, box rules, the input prompt,
+// and Claude's own status-bar / hint chrome.
 function previewLines(peek: string, max: number): string[] {
   return peek
     .split("\n")
     .map((l) => l.replace(/\s+$/, ""))
     .filter((l) => l.trim().length > 0)
-    .filter((l) => !/^[\s─━│┌┐└┘├┤╭╮╰╯]+$/.test(l))
+    .filter((l) => !/^[\s─━│┌┐└┘├┤╭╮╰╯]+/.test(l))
     .filter((l) => !/^\s*❯\s*$/.test(l))
-    .filter((l) => !/-- INSERT --|shift\+tab|for agents/.test(l))
+    .filter(
+      (l) =>
+        !/\d+k\/\d+k|Opus 4|Sonnet|Haiku|context left|⏵⏵|-- INSERT --|shift\+tab|↑ for|for agents|\/effort|accept edits/.test(
+          l,
+        ),
+    )
     .slice(-max);
 }
 
@@ -63,46 +106,73 @@ function listAgents(): Agent[] {
     if (!line.trim()) continue;
     const [branch, id, window] = line.split("\t");
     if (!branch) continue; // only tagged agent panes
-    const peek = tmux(["capture-pane", "-t", id, "-p", "-S", "-40"]);
-    agents.push({ id, branch, window, status: classify(peek), preview: previewLines(peek, 4) });
+    const peek = tmux(["capture-pane", "-t", id, "-p", "-S", "-60"]);
+    const status = classify(peek);
+    agents.push({ id, branch, window, status, note: statusNote(peek, status), preview: previewLines(peek, CARD_LINES) });
   }
   return agents;
 }
 
+function glyphFor(status: Status, frame: number): string {
+  return status === "working" ? SPINNER[frame % SPINNER.length] : STATUS_META[status].glyph;
+}
+
+function short(s: string, n: number): string {
+  return s.length > n ? s.slice(0, n - 1) + "…" : s;
+}
+
+/** Compact one-line status row in the sidebar. */
+function SidebarRow({ agent, frame, selected }: { agent: Agent; frame: number; selected: boolean }) {
+  const meta = STATUS_META[agent.status];
+  const glyph = glyphFor(agent.status, frame);
+  const name = short(agent.branch.replace(/^.*\//, ""), 14);
+  if (selected) {
+    const text = ` ${glyph} ${name.padEnd(14)} ${short(agent.note, SIDEBAR_W - 21)}`.padEnd(SIDEBAR_W - 4);
+    return (
+      <Text backgroundColor={theme.selected} color="#2E3440" bold>
+        {text}
+      </Text>
+    );
+  }
+  return (
+    <Box>
+      <Text color={meta.color}>{` ${glyph} `}</Text>
+      <Text color={theme.text}>{name.padEnd(15)}</Text>
+      <Text color={theme.dim}>{short(agent.note, SIDEBAR_W - 20)}</Text>
+    </Box>
+  );
+}
+
+/** One agent card in the wall. */
 function AgentCard({ agent, frame, selected }: { agent: Agent; frame: number; selected: boolean }) {
   const meta = STATUS_META[agent.status];
-  const glyph = agent.status === "working" ? SPINNER[frame % SPINNER.length] : meta.glyph;
-  const borderColor = selected
-    ? theme.selected
-    : agent.status === "blocked"
-      ? theme.warning
-      : theme.spine;
+  const glyph = glyphFor(agent.status, frame);
+  const lines = agent.preview.slice(-CARD_LINES);
+  const padded = [...lines, ...Array(Math.max(0, CARD_LINES - lines.length)).fill("")];
   return (
     <Box
       flexDirection="column"
       borderStyle={selected ? "bold" : "round"}
-      borderColor={borderColor}
-      width={46}
+      borderColor={selected ? theme.selected : agent.status === "blocked" ? theme.warning : theme.spine}
+      width={CARD_W}
+      height={CARD_LINES + 3}
       paddingX={1}
       marginRight={1}
       marginBottom={1}
     >
       <Box justifyContent="space-between">
         <Text color={selected ? theme.selected : meta.color} bold>
-          {selected ? "▸ " : ""}{glyph} {agent.branch}
+          {selected ? "▸ " : ""}
+          {glyph} {agent.branch}
         </Text>
         <Text color={meta.color}>{meta.label}</Text>
       </Box>
-      <Box flexDirection="column" marginTop={1}>
-        {agent.preview.length === 0 ? (
-          <Text color={theme.dim}>—</Text>
-        ) : (
-          agent.preview.map((l, i) => (
-            <Text key={i} color={theme.dim} wrap="truncate-end">
-              {l}
-            </Text>
-          ))
-        )}
+      <Box flexDirection="column">
+        {padded.map((l, i) => (
+          <Text key={i} color={l ? theme.dim : theme.spine} wrap="truncate-end">
+            {l || " "}
+          </Text>
+        ))}
       </Box>
     </Box>
   );
@@ -118,20 +188,25 @@ function jumpTo(agent?: Agent) {
 function Fleet() {
   const { exit } = useApp();
   const { stdout } = useStdout();
+  const cols = stdout?.columns ?? 100;
+
   const [agents, setAgents] = useState<Agent[]>(listAgents());
   const [frame, setFrame] = useState(0);
   const [selected, setSelected] = useState(0);
   const sel = Math.min(selected, Math.max(0, agents.length - 1));
+  const wallCols = cols - SIDEBAR_W - 3;
+  const perRow = Math.max(1, Math.floor(wallCols / (CARD_W + 1)));
 
   useInput((input, key) => {
     if (input === "q" || key.escape) return exit();
     if (input === "r") return setAgents(listAgents());
     if (input === "j" || key.downArrow) return setSelected((s) => Math.min(s + 1, agents.length - 1));
     if (input === "k" || key.upArrow) return setSelected((s) => Math.max(s - 1, 0));
+    if (input === "l" || key.rightArrow) return setSelected((s) => Math.min(s + perRow, agents.length - 1));
+    if (input === "h" || key.leftArrow) return setSelected((s) => Math.max(s - perRow, 0));
     if (key.return) jumpTo(agents[sel]);
   });
 
-  // Fast tick for the spinner; slower poll for the (more expensive) tmux reads.
   useEffect(() => {
     const spin = setInterval(() => setFrame((f) => f + 1), 90);
     const poll = setInterval(() => setAgents(listAgents()), 1000);
@@ -148,33 +223,47 @@ function Fleet() {
   };
 
   return (
-    <Box flexDirection="column" paddingX={1} paddingY={0} width={stdout?.columns ?? 100}>
+    <Box flexDirection="column" width={cols} paddingX={1}>
+      {/* Header */}
       <Box justifyContent="space-between">
         <Text color={theme.logo} bold>
+          {" "}
           worktui · fleet {SPINNER[frame % SPINNER.length]}
         </Text>
-        <Text color={theme.dim}>{agents.length} agent(s)</Text>
-      </Box>
-      <Box marginBottom={1}>
-        <Text color={theme.active}>{counts.working} working</Text>
-        <Text color={theme.dim}> · </Text>
-        <Text color={theme.warning}>{counts.blocked} blocked</Text>
-        <Text color={theme.dim}> · </Text>
-        <Text color={theme.dim}>{counts.idle} idle</Text>
+        <Text>
+          <Text color={theme.active}>{counts.working} working</Text>
+          <Text color={theme.dim}> · </Text>
+          <Text color={theme.warning}>{counts.blocked} blocked</Text>
+          <Text color={theme.dim}> · </Text>
+          <Text color={theme.dim}>{counts.idle} idle </Text>
+        </Text>
       </Box>
 
-      {agents.length === 0 ? (
-        <Text color={theme.dim}>No agents yet — spawn one with wt-spawn.sh &lt;branch&gt; [context]</Text>
-      ) : (
-        <Box flexWrap="wrap">
-          {agents.map((a, i) => (
-            <AgentCard key={a.id} agent={a} frame={frame} selected={i === sel} />
-          ))}
-        </Box>
-      )}
-
+      {/* Body: status sidebar | wall of cards */}
       <Box marginTop={1}>
-        <Text color={theme.dim}>j/k select · ↵ jump to pane · r refresh · q quit · polling 1s</Text>
+        <Box flexDirection="column" width={SIDEBAR_W} borderStyle="round" borderColor={theme.spine} paddingX={1}>
+          <Text color={theme.dim}>STATUS</Text>
+          <Box flexDirection="column" marginTop={1}>
+            {agents.length === 0 ? (
+              <Text color={theme.dim}>none yet</Text>
+            ) : (
+              agents.map((a, i) => <SidebarRow key={a.id} agent={a} frame={frame} selected={i === sel} />)
+            )}
+          </Box>
+        </Box>
+
+        <Box flexGrow={1} flexWrap="wrap" marginLeft={1}>
+          {agents.length === 0 ? (
+            <Text color={theme.dim}>No agents yet — spawn one with wt-spawn.sh &lt;branch&gt; [context]</Text>
+          ) : (
+            agents.map((a, i) => <AgentCard key={a.id} agent={a} frame={frame} selected={i === sel} />)
+          )}
+        </Box>
+      </Box>
+
+      {/* Footer */}
+      <Box>
+        <Text color={theme.dim}> h/j/k/l select · ↵ jump to pane · r refresh · q quit · polling 1s</Text>
       </Box>
     </Box>
   );
