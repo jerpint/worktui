@@ -50,6 +50,31 @@ wt pr <branch>                   # Show PR URL for branch
 wt help                          # Show help
 ```
 
+## Orchestration (scripts + skill)
+
+A thin set of standalone scripts lets a Claude session running **inside tmux** spawn and drive
+other Claude sessions, one per worktree. Each spawn = a `wt` worktree + a tmux tab split into a
+seeded Claude pane and a shell pane.
+
+```
+scripts/
+  wt-spawn.sh <branch> [context]   # create worktree + tmux tab/split + boot a named, seeded Claude
+  wt-send.sh  <pane> <text>        # type a prompt into a pane and submit
+  wt-read.sh  <pane> [lines]       # capture a pane's output back
+  wt-kill.sh  <branch> [--worktree|--branch]  # tear down the tab (+ optional worktree)
+```
+
+The seeded Claude is launched with `claude --name <branch>` so it's labelled in the session
+picker and terminal title. Prompt + name are passed via tmux's session environment (no temp
+files, no encoding hacks) and reach Claude as plain arguments.
+
+The **`worktui` skill** (`.claude/skills/worktui/SKILL.md`) is a thin wrapper that teaches Claude
+when and how to drive these scripts. Make it available globally with:
+
+```bash
+ln -sfn ~/worktui/.claude/skills/worktui ~/.claude/skills/worktui
+```
+
 ## Setup
 
 - `brew install oven-sh/bun/bun` — install bun

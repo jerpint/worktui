@@ -36,6 +36,13 @@ wt help                          # Show help
 
 Running `wt` from any git repo automatically registers it so it shows up in the project picker.
 
+## Orchestration skill (drive Claude from Claude)
+
+A `worktui` Claude Code skill + helper scripts (`scripts/wt-*.sh`) let a Claude session running
+inside tmux spawn and steer other Claude sessions — one per worktree, each named after its branch.
+Just tell Claude something like *"spawn a session for `feat/x`"* or *"let's work on X next."* See
+`CLAUDE.md → Orchestration` for details and the one-line install.
+
 ## Keybindings
 
 ### Project picker

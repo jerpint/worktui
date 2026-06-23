@@ -49,6 +49,8 @@ PROMPT="We are working in the worktui-managed worktree for branch '$BRANCH' (pat
 [[ -n "$CONTEXT" ]] && PROMPT="$PROMPT Context: $CONTEXT."
 PROMPT="$PROMPT Acknowledge this context and stand by — make no changes until I give you a task."
 tmux set-environment -t "$SESSION" WT_SPAWN_PROMPT "$PROMPT"
+# Name the Claude session after its branch (shows in session picker + terminal title).
+tmux set-environment -t "$SESSION" WT_SPAWN_NAME "$BRANCH"
 
 # 3. new tmux window (tab), detached so the caller keeps focus
 WNAME="$(printf '%s' "$BRANCH" | tr '/ ' '--')"
@@ -64,11 +66,12 @@ else
     -P -F '#{pane_id}' "exec ${SHELL:-/bin/zsh}")"
 fi
 
-# 5. boot Claude in the left pane; it expands the inherited env var itself.
-tmux send-keys -t "$CLAUDE_PANE" 'claude "$WT_SPAWN_PROMPT"' Enter
-# Clear it from the session env so it doesn't leak into later panes
-# (the pane's shell already has its own inherited copy).
+# 5. boot Claude in the left pane; it expands the inherited env vars itself.
+tmux send-keys -t "$CLAUDE_PANE" 'claude --name "$WT_SPAWN_NAME" "$WT_SPAWN_PROMPT"' Enter
+# Clear them from the session env so they don't leak into later panes
+# (the pane's shell already has its own inherited copies).
 tmux set-environment -t "$SESSION" -u WT_SPAWN_PROMPT
+tmux set-environment -t "$SESSION" -u WT_SPAWN_NAME
 
 # 6. emit handles
 printf 'WT_BRANCH=%s\n'       "$BRANCH"
