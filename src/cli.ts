@@ -1,4 +1,5 @@
 import { writeFileSync } from "fs";
+import { join } from "path";
 import {
   getGitRoot,
   listWorktrees,
@@ -31,6 +32,13 @@ Usage:
   wt cleanup [--dry-run]          Remove clean (non-dirty) worktrees
   wt remote [--json]              List remote branches without local worktrees
   wt pr <branch>                  Open or show PR for branch
+
+Orchestration (tmux — drive Claude sessions per worktree):
+  wt spawn [--right CMD] <branch> [context...]  Create worktree + tmux tab w/ seeded Claude
+  wt send <pane-id> <text...>     Type a prompt into a pane and submit
+  wt read <pane-id> [lines]       Capture a pane's output
+  wt kill <branch> [--worktree|--branch]  Tear down the tab (+ optional worktree)
+
   wt help                         Show this help`);
 }
 
@@ -305,6 +313,22 @@ async function cmdPR(args: string[]) {
   }
 }
 
+// --- Orchestration (tmux session spawning/driving) ---
+//
+// These wrap the standalone scripts in ../scripts so the whole orchestration
+// surface lives under a single `wt` command — allowlist `Bash(wt:*)` once
+// instead of approving each script path on every call.
+
+const SCRIPTS_DIR = join(import.meta.dir, "..", "scripts");
+
+async function runScript(name: string, args: string[]): Promise<void> {
+  const proc = Bun.spawn([join(SCRIPTS_DIR, name), ...args], {
+    stdio: ["inherit", "inherit", "inherit"],
+  });
+  const code = await proc.exited;
+  if (code !== 0) process.exit(code);
+}
+
 // --- Router ---
 
 export async function runCLI(args: string[]): Promise<boolean> {
@@ -323,6 +347,10 @@ export async function runCLI(args: string[]): Promise<boolean> {
     clean: (a) => cmdCleanup(a),
     remote: (a) => cmdRemote(a),
     pr: (a) => cmdPR(a),
+    spawn: (a) => runScript("wt-spawn.sh", a),
+    send: (a) => runScript("wt-send.sh", a),
+    read: (a) => runScript("wt-read.sh", a),
+    kill: (a) => runScript("wt-kill.sh", a),
     help: async () => { printHelp(); },
     "--help": async () => { printHelp(); },
     "-h": async () => { printHelp(); },

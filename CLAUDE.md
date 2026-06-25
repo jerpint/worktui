@@ -56,12 +56,17 @@ A thin set of standalone scripts lets a Claude session running **inside tmux** s
 other Claude sessions, one per worktree. Each spawn = a `wt` worktree + a tmux tab split into a
 seeded Claude pane and a shell pane.
 
+These are exposed as `wt` subcommands (thin wrappers in `cli.ts` that exec the scripts in
+`scripts/`), so the whole orchestration surface lives under one command — allowlist
+`Bash(wt:*)` once instead of approving each script path per call.
+
 ```
-scripts/
-  wt-spawn.sh <branch> [context]   # create worktree + tmux tab/split + boot a named, seeded Claude
-  wt-send.sh  <pane> <text>        # type a prompt into a pane and submit
-  wt-read.sh  <pane> [lines]       # capture a pane's output back
-  wt-kill.sh  <branch> [--worktree|--branch]  # tear down the tab (+ optional worktree)
+wt spawn [--right CMD] <branch> [context]   # create worktree + tmux tab/split + boot a named, seeded Claude
+wt send  <pane> <text>                      # type a prompt into a pane and submit
+wt read  <pane> [lines]                     # capture a pane's output back
+wt kill  <branch> [--worktree|--branch]     # tear down the tab (+ optional worktree)
+
+# underlying scripts (source of truth): scripts/wt-{spawn,send,read,kill}.sh
 ```
 
 The seeded Claude is launched with `claude --name <branch>` so it's labelled in the session
