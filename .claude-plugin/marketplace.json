@@ -1,0 +1,13 @@
+{
+  "name": "worktui",
+  "owner": {
+    "name": "jerpint"
+  },
+  "plugins": [
+    {
+      "name": "worktui",
+      "source": "./",
+      "description": "Git worktree + tmux session orchestrator — spawn, seed, drive, and tear down per-branch Claude sessions"
+    }
+  ]
+}
