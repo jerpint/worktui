@@ -45,6 +45,8 @@ Conductor control primitives (also under "wt sessions <verb>"):
   wt key <pane-id> <key...>       Send raw key(s) without submitting (e.g. Escape, C-c)
   wt approve <pane-id>            Answer a permission dialog: Yes
   wt deny <pane-id>               Answer a permission dialog: cancel
+  wt sessions watch [--json]      Stream conductor events (permission/idle) from the sink
+  wt notify <text> [--channels …] Send an out-of-band notification (eventlog/desktop/…)
   wt sessions history [<branch>]  Claude session history (legacy "wt sessions")
 
   wt help                         Show this help`);
@@ -352,6 +354,7 @@ const SESSION_SCRIPTS: Record<string, string> = {
   approve: "wt-approve.sh", // answer a permission dialog: Yes
   deny: "wt-deny.sh", // answer a permission dialog: cancel/No
   state: "wt-state.sh", // classify: running|idle|permission|done|error
+  watch: "wt-watch.sh", // stream conductor events from the sink
   spawn: "wt-spawn.sh", // create worktree + tmux tab + seeded Claude
   kill: "wt-kill.sh", // tear down the tab (+ optional worktree)
 };
@@ -397,6 +400,8 @@ export async function runCLI(args: string[]): Promise<boolean> {
     state: (a) => runScript("wt-state.sh", a),
     approve: (a) => runScript("wt-approve.sh", a),
     deny: (a) => runScript("wt-deny.sh", a),
+    watch: (a) => runScript("wt-watch.sh", a), // alias: `wt sessions watch`
+    notify: (a) => runScript("wt-notify.sh", a), // out-of-band escalation
     ps: (a) => runScript("wt-sessions-list.sh", a), // alias: `wt sessions list`
     help: async () => { printHelp(); },
     "--help": async () => { printHelp(); },
