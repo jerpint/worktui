@@ -63,24 +63,46 @@ after the TUI exits (the `/tmp/worktui-launch` dance, plus `wt -` for "previous
 worktree"). A child process can't change its parent's working directory. So we can't
 simply delete the function.
 
-### Recommended packaging
-Split "the tool" from "the interactive shell sugar":
+### Decided packaging approach
+Split "the tool" from "the interactive shell sugar". This is the concrete, committed plan
+(not an options menu):
 
-1. **Real `wt` executable on PATH** for all non-interactive subcommands (list, sessions,
-   spawn, send, read, state, wait, watch, notify, …). Options, in order of preference:
-   - `bun build --compile src/index.tsx --outfile dist/wt` → a standalone binary, symlinked
-     into `~/.local/bin/wt` (or `/usr/local/bin`). No bun-on-PATH dependency at call time.
-   - Or keep `bin.wt` + `bun link` and ensure the binary (not the function) wins on PATH
-     for non-interactive shells. Requires a shebang (`#!/usr/bin/env bun`) on `index.tsx`.
-2. **Thin shell function kept only for the interactive cd/launch behavior.** It calls the
-   real `wt` binary, then performs the `cd`/`claude` dance for `kind: shell|claude`
-   payloads. Background shells fall through to the binary (they never need to `cd`).
-3. **Guarantee for the orchestrator:** the spawn/event scripts must invoke the binary by
-   an absolute, discoverable path (resolved once, e.g. `command -v wt`), never relying on
-   the function being sourced.
+1. **Ship a real binary on PATH:**
+   ```
+   bun build --compile src/index.tsx --outfile ~/.local/bin/wt
+   ```
+   `~/.local/bin` is on PATH for all shells (incl. non-login/background), so hooks and the
+   orchestrator resolve `wt` directly with no `bun`-at-call-time dependency.
 
-**Acceptance:** `env -i /bin/sh -c 'wt sessions list --json'` works (clean environment,
-no profile sourced). Until that passes, the orchestrator is not viable.
+2. **Keep the `wt()` shell function in `wt.sh` — change ONLY its tool-invocation line.**
+   The single edit:
+   ```diff
+   - bun run ~/worktui/src/index.tsx "$@"
+   + command wt "$@"
+   ```
+   `command wt` bypasses the function itself (no recursion) and invokes the binary on PATH.
+   **Every other line of the function stays byte-for-byte identical** — the
+   `/tmp/worktui-launch` payload parse, the `shell`/`claude` `cd`+launch dance, and the
+   `wt -` previous-worktree `cd`. That half genuinely *requires* a function: a child
+   process cannot `cd` its parent shell. We are not rewriting or "thinning" the function;
+   we are swapping one line.
+
+3. **Guarantee for the orchestrator:** non-interactive callers (spawn/event scripts, hook
+   commands) get the binary directly via PATH — they never rely on the function being
+   sourced.
+
+### ⚠️ Hard acceptance criterion — interactive behavior MUST NOT change
+The interactive TUI behavior must be **identical to today**. Specifically, these must
+behave **exactly as they do now**:
+- **`o`** — open shell / `cd` into the worktree
+- **`c`** — new Claude session
+- **`r`** — resume Claude session
+- **`wt -`** — `cd` to the previous worktree
+
+The **only** observable change: **non-interactive shells (hooks/orchestrator) now resolve
+`wt` to the binary** instead of having no `wt` at all. If any interactive flow changes, the
+change is wrong. (Sanity check that the binary path also works in a clean env:
+`env -i /bin/sh -c 'wt sessions list --json'`.)
 
 ---
 
@@ -471,8 +493,11 @@ Slack Socket Mode).
 
 ## Build sequencing (when code starts — not this pass)
 
-1. **P0 packaging** — real `wt` on PATH + thin interactive wrapper. Acceptance test above.
-   *(Blocks everything — hook commands and the listener all call the binary.)*
+1. **P0 packaging** — `bun build --compile src/index.tsx --outfile ~/.local/bin/wt`, and
+   change the one tool-invocation line in `wt()` (`bun run …` → `command wt "$@"`); leave
+   the rest of the function byte-for-byte. **Hard gate:** interactive `o`/`c`/`r`/`wt -`
+   unchanged; only non-interactive shells gain `wt`. *(Blocks everything — hook commands
+   and the listener all call the binary.)*
 2. **Task 1** — namespaced router + legacy aliases; `wt sessions list` (+ `wt ps`, with
    worktree path); pane tagging at spawn; `wt sessions cd` / `wt peek`.
 3. **Task 2a (PRIMARY)** — Claude Code **hooks**: inject `Notification`/`Stop`/`PreToolUse`
