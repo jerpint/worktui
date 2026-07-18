@@ -1,21 +1,26 @@
 ---
 name: worktui
-description: Spin up and drive isolated Claude work sessions in tmux + git worktrees via worktui. Use when the user says things like "let's work on X next", "spawn a session for <branch>", "orchestrate these sessions", "set up a worktree session", or wants to start, drive, observe, or tear down per-branch Claude sessions. Requires running inside tmux.
+description: Manage git worktrees and spin up / drive isolated Claude work sessions via worktui (`wt`). Use when the user wants to create, list, or clean up git worktrees for parallel branches, OR to spawn, drive, observe, or tear down per-branch Claude sessions ("let's work on X next", "spawn a session for <branch>", "orchestrate these sessions", "set up a worktree"). The session-orchestration verbs require running inside tmux; plain worktree management does not.
 ---
 
 # worktui
 
-Orchestrate isolated work sessions. Each session = one `wt` (worktui) worktree + one tmux
-tab split into a **seeded Claude pane** and a **shell pane**. You are the conductor: spawn,
-seed, send tasks, read output, tear down — all from your own session via these scripts.
+`wt` does two things:
 
-All orchestration runs through the single `wt` command, so one permission grant
-(`Bash(wt:*)`) covers spawn/send/read/kill — you won't be prompted per call.
+1. **Manage git worktrees** — isolated per-branch working directories, so you can work on
+   several branches in parallel without collisions (see *Worktree management* below).
+2. **Orchestrate work sessions** — each session = one worktree + one tmux tab split into a
+   **seeded Claude pane** and a **shell pane**. You are the conductor: spawn, seed, send tasks,
+   read output, tear down — all from your own session (sections 1–4).
+
+Everything runs through the single `wt` command, so one permission grant (`Bash(wt:*)`) covers
+all of it — you won't be prompted per call.
 
 **Prerequisites:**
 - **worktui must be installed** and `wt` on PATH (`bun link` in `~/worktui`).
   If `wt` isn't available, none of this works. See `~/worktui/HUMANS.md` for setup.
-- **Must be running inside tmux** — `wt` drives the tmux server to open tabs/panes.
+- **The orchestration verbs (spawn/send/read/kill) must run inside tmux** — `wt` drives the tmux
+  server to open tabs/panes. Plain worktree management (create/list/delete/…) works anywhere.
 
 ## 1. Spawn a session
 
@@ -59,6 +64,26 @@ wt kill <branch>              # close the tab only
 wt kill <branch> --worktree   # + remove the worktree
 wt kill <branch> --branch     # + remove the worktree and its branch
 ```
+
+## Worktree management
+
+For everyday parallel-branch work (no tmux needed), `wt` manages the worktrees themselves — each
+branch gets its own isolated directory:
+
+```bash
+wt create <branch> [--pr]        # create a worktree for a branch (+ optional draft PR); cd's you in
+wt list [--json]                 # list worktrees
+wt status                        # info about the current worktree
+wt sessions [<branch>] [--json]  # Claude sessions for a worktree
+wt delete <branch> [--branch]    # remove a worktree (+ optionally its branch)
+wt clean [--dry-run]             # remove all clean (non-dirty) worktrees
+wt remote [--json]               # remote branches without a local worktree
+wt projects [--json]             # registered projects
+wt pr <branch>                   # show the PR URL for a branch
+```
+
+Run `wt` with no arguments for the interactive TUI (navigate with j/k), or `wt help` for the full
+reference. Every command supports `--json` for machine-readable output.
 
 ## Conventions
 
