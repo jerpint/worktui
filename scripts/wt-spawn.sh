@@ -42,6 +42,36 @@ REPO="${WT_REPO:-$PWD}"
 WT_PATH="$(cd "$REPO" && bun run "$WORKTUI_SRC" create "$BRANCH" | head -1)"
 [[ -d "$WT_PATH" ]] || { echo "wt-spawn: worktree path not found: $WT_PATH" >&2; exit 1; }
 
+# 1b. inject the Notification hook into the worktree's settings BEFORE Claude
+# boots, so the child emits permission/idle events into the conductor's sink.
+# We MERGE (never clobber): createWorktree already copies the repo's
+# settings.local.json, and the user may have their own hooks. The hook command
+# is a self-located ABSOLUTE path (the hook must work without `wt` on PATH) with
+# WT_HOOK_BRANCH passed as a shell-prefix assignment (Claude Code does not
+# interpolate $VARs into command hooks, but a literal `VAR=val /abs/cmd` prefix
+# is plain sh and reaches the hook as an env var). Matcher is "" (wildcard):
+# we capture every notification_type and let the consumer dispatch on it,
+# rather than locking to permission_prompt/idle_prompt here.
+SELF_DIR="$(cd "$(dirname "$0")" && pwd)"
+HOOK_SCRIPT="$SELF_DIR/wt-notify-hook.sh"
+HOOK_CMD="WT_HOOK_BRANCH='$BRANCH' '$HOOK_SCRIPT'"
+SETTINGS_PATH="$WT_PATH/.claude/settings.local.json" \
+HOOK_CMD="$HOOK_CMD" \
+bun -e '
+  const fs = require("fs"), path = require("path");
+  const p = process.env.SETTINGS_PATH, cmd = process.env.HOOK_CMD;
+  let s = {};
+  try { s = JSON.parse(fs.readFileSync(p, "utf8") || "{}"); } catch {}
+  if (typeof s !== "object" || s === null || Array.isArray(s)) s = {};
+  if (typeof s.hooks !== "object" || s.hooks === null || Array.isArray(s.hooks)) s.hooks = {};
+  const arr = Array.isArray(s.hooks.Notification) ? s.hooks.Notification : [];
+  const already = arr.some(e => Array.isArray(e?.hooks) && e.hooks.some(h => h?.command === cmd));
+  if (!already) arr.push({ matcher: "", hooks: [{ type: "command", command: cmd }] });
+  s.hooks.Notification = arr;
+  fs.mkdirSync(path.dirname(p), { recursive: true });
+  fs.writeFileSync(p, JSON.stringify(s, null, 2) + "\n");
+' || echo "wt-spawn: warning — could not inject Notification hook into $SETTINGS_PATH" >&2
+
 # 2. seed the prompt via tmux's session environment. tmux handles the quoting
 # (we just pass "$PROMPT"); panes created next inherit it as a plain env var.
 # The value is never re-parsed as shell — Claude receives it as a single argument.
@@ -65,6 +95,13 @@ else
   SHELL_PANE="$(tmux split-window -h -d -c "$WT_PATH" -t "$CLAUDE_PANE" \
     -P -F '#{pane_id}' "exec ${SHELL:-/bin/zsh}")"
 fi
+
+# 4b. tag both panes so `wt sessions list` discovery is robust (registry lives
+# in tmux — no separate state file to desync, survives pane-id reuse).
+tmux set-option -p -t "$CLAUDE_PANE" @wt_branch "$BRANCH"
+tmux set-option -p -t "$CLAUDE_PANE" @wt_role   claude
+tmux set-option -p -t "$SHELL_PANE"  @wt_branch "$BRANCH"
+tmux set-option -p -t "$SHELL_PANE"  @wt_role   shell
 
 # 5. boot Claude in the left pane; it expands the inherited env vars itself.
 tmux send-keys -t "$CLAUDE_PANE" 'claude --name "$WT_SPAWN_NAME" "$WT_SPAWN_PROMPT"' Enter

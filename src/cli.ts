@@ -39,6 +39,16 @@ Orchestration (tmux — drive Claude sessions per worktree):
   wt read <pane-id> [lines]       Capture a pane's output
   wt kill <branch> [--worktree|--branch]  Tear down the tab (+ optional worktree)
 
+Conductor control primitives (also under "wt sessions <verb>"):
+  wt ps                           List live Claude panes (= wt sessions list [--json])
+  wt state <pane-id>              Classify pane: running|idle|permission|done|error
+  wt key <pane-id> <key...>       Send raw key(s) without submitting (e.g. Escape, C-c)
+  wt approve <pane-id>            Answer a permission dialog: Yes
+  wt deny <pane-id>               Answer a permission dialog: cancel
+  wt sessions watch [--json]      Stream conductor events (permission/idle) from the sink
+  wt notify <text> [--channels …] Send an out-of-band notification (eventlog/desktop/…)
+  wt sessions history [<branch>]  Claude session history (legacy "wt sessions")
+
   wt help                         Show this help`);
 }
 
@@ -329,6 +339,40 @@ async function runScript(name: string, args: string[]): Promise<void> {
   if (code !== 0) process.exit(code);
 }
 
+// --- `wt sessions <verb>` noun-verb sub-router ---
+//
+// Conductor control primitives live under the `sessions` namespace (and short
+// flat aliases). `wt sessions <verb>` dispatches to the verb; anything else
+// falls through to the legacy `wt sessions [<branch>] [--json]` history view,
+// so existing usage keeps working. (A branch literally named like a verb must
+// use `wt sessions history <branch>`.)
+const SESSION_SCRIPTS: Record<string, string> = {
+  list: "wt-sessions-list.sh", // live Claude panes (alias: `wt ps`)
+  read: "wt-read.sh", // capture a pane's output
+  key: "wt-key.sh", // send raw key(s), no auto-submit
+  send: "wt-send.sh", // type text + Enter
+  approve: "wt-approve.sh", // answer a permission dialog: Yes
+  deny: "wt-deny.sh", // answer a permission dialog: cancel/No
+  state: "wt-state.sh", // classify: running|idle|permission|done|error
+  watch: "wt-watch.sh", // stream conductor events from the sink
+  spawn: "wt-spawn.sh", // create worktree + tmux tab + seeded Claude
+  kill: "wt-kill.sh", // tear down the tab (+ optional worktree)
+};
+
+async function cmdSessionsRouter(args: string[]): Promise<void> {
+  const verb = args[0];
+  if (verb === "history") {
+    await cmdSessions(args.slice(1));
+    return;
+  }
+  if (verb && verb in SESSION_SCRIPTS) {
+    await runScript(SESSION_SCRIPTS[verb], args.slice(1));
+    return;
+  }
+  // Legacy: `wt sessions [<branch>] [--json]` → Claude session history.
+  await cmdSessions(args);
+}
+
 // --- Router ---
 
 export async function runCLI(args: string[]): Promise<boolean> {
@@ -341,16 +385,24 @@ export async function runCLI(args: string[]): Promise<boolean> {
     create: (a) => cmdCreate(a),
     delete: (a) => cmdDelete(a),
     rm: (a) => cmdDelete(a),
-    sessions: (a) => cmdSessions(a),
+    sessions: (a) => cmdSessionsRouter(a),
     projects: (a) => cmdProjects(a),
     status: (a) => cmdStatus(),
     clean: (a) => cmdCleanup(a),
     remote: (a) => cmdRemote(a),
     pr: (a) => cmdPR(a),
+    // Orchestration primitives — also reachable as `wt sessions <verb>`.
     spawn: (a) => runScript("wt-spawn.sh", a),
     send: (a) => runScript("wt-send.sh", a),
     read: (a) => runScript("wt-read.sh", a),
     kill: (a) => runScript("wt-kill.sh", a),
+    key: (a) => runScript("wt-key.sh", a),
+    state: (a) => runScript("wt-state.sh", a),
+    approve: (a) => runScript("wt-approve.sh", a),
+    deny: (a) => runScript("wt-deny.sh", a),
+    watch: (a) => runScript("wt-watch.sh", a), // alias: `wt sessions watch`
+    notify: (a) => runScript("wt-notify.sh", a), // out-of-band escalation
+    ps: (a) => runScript("wt-sessions-list.sh", a), // alias: `wt sessions list`
     help: async () => { printHelp(); },
     "--help": async () => { printHelp(); },
     "-h": async () => { printHelp(); },
