@@ -80,7 +80,21 @@ wt clean [--dry-run]             # remove all clean (non-dirty) worktrees
 wt remote [--json]               # remote branches without a local worktree
 wt projects [--json]             # registered projects
 wt pr <branch>                   # show the PR URL for a branch
+wt main [--force]                # put the default branch back in the primary repo; cd's you in
+wt doctor [--fix] [--force]      # check (and repair) the worktree layout
 ```
+
+**The default branch lives in the primary repo, never in a linked worktree.** Git refuses to
+check out a branch that's already checked out somewhere else, so parking `main` under
+`~/.worktui` would lock the primary clone out of `main` permanently. `wt create main` therefore
+doesn't create a worktree — it sends you to the primary repo. If a repo is already in that
+broken state (primary stranded on some straggling branch), `wt doctor --fix` repairs it:
+it evicts `main` from the linked worktree, checks it out in the primary, and gives the displaced
+branch its own worktree so unmerged commits don't vanish from `wt list`. `wt main` does the same
+and drops you in the primary.
+
+Both refuse rather than discard: if the worktree holding `main` is dirty, or the primary has
+uncommitted tracked changes, you get an error naming the path. `--force` overrides (and discards).
 
 Run `wt` with no arguments for the interactive TUI (navigate with j/k), or `wt help` for the full
 reference. Every command supports `--json` for machine-readable output.

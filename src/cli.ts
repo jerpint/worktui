@@ -10,6 +10,10 @@ import {
   listRemoteBranches,
   createDraftPR,
   getPRUrl,
+  restoreDefaultBranch,
+  diagnoseLayout,
+  pruneWorktrees,
+  getDefaultBranch,
 } from "./git.js";
 import { getSessions } from "./sessions.js";
 import { listProjects } from "./projects.js";
@@ -30,6 +34,8 @@ Usage:
   wt projects [--json]            List registered projects
   wt status                       Current worktree info
   wt cleanup [--dry-run]          Remove clean (non-dirty) worktrees
+  wt main [--force]               Put the default branch back in the primary repo, cd there
+  wt doctor [--fix] [--force]     Check (and repair) the worktree layout
   wt remote [--json]              List remote branches without local worktrees
   wt pr <branch>                  Open or show PR for branch
 
@@ -73,7 +79,7 @@ async function cmdList(args: string[]) {
     const time = relativeTime(wt.commitDate).padEnd(8);
     const status = wt.isDirty ? "dirty" : "clean";
     const sessions = wt.sessionCount > 0 ? `${wt.sessionCount} session${wt.sessionCount > 1 ? "s" : ""}` : "";
-    const main = wt.isMain ? " (main)" : "";
+    const main = wt.isMain ? " (primary)" : "";
     console.log(`  ${branch}  ${time}  ${status.padEnd(6)}  ${sessions}${main}`);
   }
 }
@@ -313,6 +319,63 @@ async function cmdPR(args: string[]) {
   }
 }
 
+// --- Main / Doctor ---
+//
+// The default branch is not just another worktree: it lives in the primary
+// clone. `wt main` restores that, `wt doctor` reports on it.
+
+async function cmdMain(args: string[]) {
+  const force = args.includes("--force");
+  const gitRoot = await getGitRoot();
+  const result = await restoreDefaultBranch(gitRoot, { force });
+
+  if (result.actions.length === 0) {
+    console.log(`${result.branch} is already checked out at ${result.path}`);
+  } else {
+    for (const a of result.actions) console.log(`  ${a}`);
+  }
+
+  recordAccess(result.path);
+  writeFileSync(LAUNCH_FILE, JSON.stringify({ kind: "shell", cwd: result.path }));
+}
+
+async function cmdDoctor(args: string[]) {
+  const fix = args.includes("--fix");
+  const force = args.includes("--force");
+  const gitRoot = await getGitRoot();
+  const defaultBranch = await getDefaultBranch(gitRoot);
+
+  let issues = await diagnoseLayout(gitRoot);
+
+  if (issues.length === 0) {
+    console.log(`Layout OK — ${defaultBranch} is in the primary repo ${gitRoot}`);
+    return;
+  }
+
+  for (const i of issues) console.log(`  x ${i.message}`);
+
+  if (!fix) {
+    console.log(`\nRun \`wt doctor --fix\` to repair.`);
+    process.exit(1);
+  }
+
+  console.log("");
+  await pruneWorktrees(gitRoot);
+  console.log("  pruned stale worktree registrations");
+
+  const result = await restoreDefaultBranch(gitRoot, { force });
+  for (const a of result.actions) console.log(`  ${a}`);
+
+  issues = await diagnoseLayout(gitRoot);
+  if (issues.length === 0) {
+    console.log(`\nLayout OK — ${result.branch} is in the primary repo ${result.path}`);
+  } else {
+    console.log("");
+    for (const i of issues) console.log(`  x still broken: ${i.message}`);
+    process.exit(1);
+  }
+}
+
 // --- Orchestration (tmux session spawning/driving) ---
 //
 // These wrap the standalone scripts in ../scripts so the whole orchestration
@@ -347,6 +410,8 @@ export async function runCLI(args: string[]): Promise<boolean> {
     clean: (a) => cmdCleanup(a),
     remote: (a) => cmdRemote(a),
     pr: (a) => cmdPR(a),
+    main: (a) => cmdMain(a),
+    doctor: (a) => cmdDoctor(a),
     spawn: (a) => runScript("wt-spawn.sh", a),
     send: (a) => runScript("wt-send.sh", a),
     read: (a) => runScript("wt-read.sh", a),

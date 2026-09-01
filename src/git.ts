@@ -33,6 +33,20 @@ export async function getGitRoot(cwd?: string): Promise<string> {
   return resolve(commonDir, "..");
 }
 
+/**
+ * Tracked-only modifications. Untracked files don't block a branch switch —
+ * `git checkout` carries them across, and refuses on its own in the one case
+ * that matters (an untracked file that the target branch would clobber).
+ */
+export async function hasLocalChanges(path: string): Promise<boolean> {
+  const [diff, cached] = await Promise.all([
+    run(["git", "diff", "--quiet"], path),
+    run(["git", "diff", "--cached", "--quiet"], path),
+  ]);
+  return diff.exitCode !== 0 || cached.exitCode !== 0;
+}
+
+/** Any dirt at all, untracked included — the gate for destructive operations. */
 export async function isDirty(path: string): Promise<boolean> {
   const [diff, cached, untracked] = await Promise.all([
     run(["git", "diff", "--quiet"], path),
@@ -133,6 +147,22 @@ export async function createWorktree(
   branch: string,
   startPoint?: string
 ): Promise<string> {
+  const defaultBranch = await getDefaultBranch(gitRoot);
+
+  // The default branch belongs to the primary repo. Giving it a linked worktree
+  // locks the primary clone out of it permanently, so redirect there instead.
+  if (branch === defaultBranch) {
+    const { path } = await restoreDefaultBranch(gitRoot);
+    return path;
+  }
+
+  // If the primary repo is sitting on the branch we've been asked to break out,
+  // git would refuse ("already checked out"). Send the primary home first — that
+  // frees the branch and re-parks it here.
+  if ((await currentBranch(gitRoot)) === branch) {
+    await restoreDefaultBranch(gitRoot);
+  }
+
   const folderName = branchToFolder(branch);
   const worktreesDir = join(getWorktreeBase(), basename(gitRoot));
   const worktreePath = join(worktreesDir, folderName);
@@ -295,4 +325,222 @@ export async function createDraftPR(
   );
   if (exitCode !== 0) throw new Error(`Failed to create PR: ${stderr}`);
   return stdout;
+}
+
+// --- Default branch ownership -------------------------------------------------
+//
+// Invariant: the default branch (usually `main`) lives in the primary repo and
+// nowhere else. Parking it in a linked worktree under ~/.worktui makes it
+// impossible to ever check it out in the primary clone again — git refuses to
+// check out a branch that is already checked out somewhere else, and the primary
+// gets stranded on whatever branch it happened to be on. Everything below
+// enforces and repairs that invariant.
+
+const defaultBranchCache = new Map<string, string>();
+
+export async function getDefaultBranch(gitRoot: string): Promise<string> {
+  const cached = defaultBranchCache.get(gitRoot);
+  if (cached) return cached;
+
+  let branch = "";
+
+  // origin/HEAD is authoritative when it's set
+  const symref = await run(
+    ["git", "symbolic-ref", "--short", "refs/remotes/origin/HEAD"],
+    gitRoot
+  );
+  if (symref.exitCode === 0 && symref.stdout) {
+    branch = symref.stdout.replace(/^origin\//, "");
+  }
+
+  // Fall back to the conventional names — kept local so this never blocks on network
+  if (!branch) {
+    for (const candidate of ["main", "master"]) {
+      const check = await run(
+        ["git", "rev-parse", "--verify", "--quiet", `refs/heads/${candidate}`],
+        gitRoot
+      );
+      if (check.exitCode === 0) {
+        branch = candidate;
+        break;
+      }
+    }
+  }
+
+  branch = branch || "main";
+  defaultBranchCache.set(gitRoot, branch);
+  return branch;
+}
+
+/** Path of the worktree that currently has `branch` checked out, if any. */
+export async function findBranchWorktree(
+  gitRoot: string,
+  branch: string
+): Promise<string | null> {
+  const { stdout } = await run(
+    ["git", "worktree", "list", "--porcelain"],
+    gitRoot
+  );
+  const hit = parsePorcelain(stdout).find((w) => w.branch === branch);
+  return hit ? hit.path : null;
+}
+
+/** Branch checked out at `path`, or null when detached. */
+export async function currentBranch(path: string): Promise<string | null> {
+  const { stdout, exitCode } = await run(
+    ["git", "symbolic-ref", "--quiet", "--short", "HEAD"],
+    path
+  );
+  return exitCode === 0 && stdout ? stdout : null;
+}
+
+export async function untrackedFiles(path: string): Promise<string[]> {
+  const { stdout } = await run(
+    ["git", "ls-files", "--others", "--exclude-standard"],
+    path
+  );
+  return stdout ? stdout.split("\n").filter(Boolean) : [];
+}
+
+export async function pruneWorktrees(gitRoot: string): Promise<void> {
+  await run(["git", "worktree", "prune"], gitRoot);
+}
+
+export interface RestoreResult {
+  /** The primary repo — where the default branch now lives. */
+  path: string;
+  branch: string;
+  /** Human-readable log of what was actually done (empty = nothing needed). */
+  actions: string[];
+  /** Worktree the displaced branch was moved into, if it had unique commits. */
+  parked?: string;
+}
+
+/**
+ * Put the default branch back in the primary repo.
+ *
+ * Evicts it from any linked worktree squatting on it, checks it out in the
+ * primary, and gives the branch it displaced its own worktree so unmerged work
+ * doesn't silently disappear from `wt list`.
+ */
+export async function restoreDefaultBranch(
+  gitRoot: string,
+  opts: { force?: boolean } = {}
+): Promise<RestoreResult> {
+  const def = await getDefaultBranch(gitRoot);
+  const actions: string[] = [];
+
+  await pruneWorktrees(gitRoot);
+
+  if ((await currentBranch(gitRoot)) === def) {
+    return { path: gitRoot, branch: def, actions };
+  }
+
+  // 1. Evict the default branch from whatever linked worktree holds it.
+  const holder = await findBranchWorktree(gitRoot, def);
+  if (holder && resolve(holder) !== resolve(gitRoot)) {
+    if ((await isDirty(holder)) && !opts.force) {
+      throw new Error(
+        `${def} is checked out at ${holder} and has uncommitted changes.\n` +
+          `Commit or stash them there first, or re-run with --force to discard them.`
+      );
+    }
+    const args = ["git", "worktree", "remove", holder];
+    if (opts.force) args.push("--force");
+    const { exitCode, stderr } = await run(args, gitRoot);
+    if (exitCode !== 0) {
+      throw new Error(`Failed to release ${def} from ${holder}: ${stderr}`);
+    }
+    actions.push(`released ${def} from ${holder}`);
+  }
+
+  // 2. Move the primary repo onto the default branch.
+  const displaced = await currentBranch(gitRoot);
+  if ((await hasLocalChanges(gitRoot)) && !opts.force) {
+    throw new Error(
+      `${gitRoot} has uncommitted changes on ${displaced ?? "a detached HEAD"}.\n` +
+        `Commit or stash them first, or re-run with --force to discard them.`
+    );
+  }
+  // Untracked files don't follow a branch switch — git leaves them in place. If
+  // any belong to the work we're displacing, they'd silently end up sitting in
+  // the default branch's checkout instead of the branch's new worktree.
+  const strays = await untrackedFiles(gitRoot);
+
+  const checkout = ["git", "checkout"];
+  if (opts.force) checkout.push("--force");
+  checkout.push(def);
+  const co = await run(checkout, gitRoot);
+  if (co.exitCode !== 0) {
+    throw new Error(`Failed to check out ${def} in ${gitRoot}: ${co.stderr}`);
+  }
+  actions.push(`checked out ${def} in ${gitRoot}`);
+
+  // 3. Don't strand the branch we just displaced. If it carries commits that
+  //    aren't on the default branch, give it a worktree of its own.
+  let parked: string | undefined;
+  if (displaced && displaced !== def) {
+    const { stdout: ahead } = await run(
+      ["git", "rev-list", "--count", `${def}..${displaced}`],
+      gitRoot
+    );
+    if (Number(ahead) > 0) {
+      parked = await createWorktree(gitRoot, displaced);
+      actions.push(`parked ${displaced} (${ahead} unmerged commit(s)) at ${parked}`);
+    }
+  }
+
+  if (displaced && displaced !== def && strays.length > 0) {
+    const shown = strays.slice(0, 5).join(", ");
+    const more = strays.length > 5 ? `, +${strays.length - 5} more` : "";
+    actions.push(
+      `note: ${strays.length} untracked file(s) stayed behind in ${gitRoot} — ` +
+        `git doesn't move them across a branch switch. If they belong to ` +
+        `${displaced}, move them${parked ? ` to ${parked}` : ""}: ${shown}${more}`
+    );
+  }
+
+  return { path: gitRoot, branch: def, actions, parked };
+}
+
+export interface LayoutIssue {
+  kind: "stale" | "default-branch-displaced" | "primary-off-default";
+  message: string;
+}
+
+/** Report everything about this repo's worktree layout that violates the invariant. */
+export async function diagnoseLayout(gitRoot: string): Promise<LayoutIssue[]> {
+  const def = await getDefaultBranch(gitRoot);
+  const issues: LayoutIssue[] = [];
+
+  const { stdout } = await run(
+    ["git", "worktree", "list", "--porcelain"],
+    gitRoot
+  );
+  for (const w of parsePorcelain(stdout)) {
+    if (!existsSync(w.path)) {
+      issues.push({
+        kind: "stale",
+        message: `stale registration: ${w.path}${w.branch ? ` (${w.branch})` : ""}`,
+      });
+    }
+  }
+
+  const holder = await findBranchWorktree(gitRoot, def);
+  if (holder && resolve(holder) !== resolve(gitRoot)) {
+    issues.push({
+      kind: "default-branch-displaced",
+      message: `${def} is checked out at ${holder} — it belongs in the primary repo ${gitRoot}`,
+    });
+  }
+
+  const current = await currentBranch(gitRoot);
+  if (current !== def) {
+    issues.push({
+      kind: "primary-off-default",
+      message: `primary repo ${gitRoot} is on ${current ?? "a detached HEAD"}, expected ${def}`,
+    });
+  }
+
+  return issues;
 }
