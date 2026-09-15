@@ -154,7 +154,7 @@ Projects are auto-registered when you run `wt` from any git repo.
 | / | Filter/create (enter insert mode) |
 | h | Back to project picker |
 | a | Activate worktree (chdir) |
-| o | Open shell in worktree |
+| o/Enter | Open shell in worktree |
 | b | Branch off selected worktree |
 | c | New Claude session |
 | r | Resume latest Claude session |
