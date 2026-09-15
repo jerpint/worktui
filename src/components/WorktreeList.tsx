@@ -462,9 +462,9 @@ export default function WorktreeList({ onNavigate, onLaunch, onQuit }: WorktreeL
           const proj = displayProjects[selected];
           if (proj) selectProject(proj);
         } else if (selectedWorktree) {
-          onLaunch({ kind: "claude", cwd: selectedWorktree.path, resume: true });
+          onLaunch({ kind: "shell", cwd: selectedWorktree.path });
         } else if (selectedRemoteBranch && !remoteCreating) {
-          checkoutRemoteBranch(selectedRemoteBranch.name);
+          checkoutRemoteBranch(selectedRemoteBranch.name, "shell");
         } else if (canCreate) {
           doCreate();
         }
@@ -483,7 +483,19 @@ export default function WorktreeList({ onNavigate, onLaunch, onQuit }: WorktreeL
     }
 
     // Normal mode
-    if (key.return || input === "l" || key.rightArrow) {
+    if (key.return) {
+      if (inProjectMode) {
+        const proj = displayProjects[selected];
+        if (proj) selectProject(proj);
+      } else if (selectedWorktree) {
+        onLaunch({ kind: "shell", cwd: selectedWorktree.path });
+      } else if (selectedRemoteBranch && !remoteCreating) {
+        checkoutRemoteBranch(selectedRemoteBranch.name, "shell");
+      }
+      return;
+    }
+
+    if (input === "l" || key.rightArrow) {
       if (inProjectMode) {
         const proj = displayProjects[selected];
         if (proj) selectProject(proj);
@@ -989,7 +1001,7 @@ export default function WorktreeList({ onNavigate, onLaunch, onQuit }: WorktreeL
                     { key: "\u2190", label: "projects" },
                     { key: "\u2192", label: "sessions" },
                     { key: "a", label: "activate" },
-                    { key: "o", label: "shell" },
+                    { key: "o/\u23CE", label: "shell" },
                     { key: "b", label: "branch" },
                     { key: "c", label: "claude" },
                     { key: "r", label: "resume" },

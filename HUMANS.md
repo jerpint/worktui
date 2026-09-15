@@ -65,7 +65,7 @@ Shown when `wt` is launched outside a git repo.
 | Esc | Back to normal mode |
 | h | Back to project picker |
 | a | Activate worktree (cd on quit) |
-| o | Open shell in worktree (cd) |
+| o/Enter | Open shell in worktree (cd) |
 | b | Branch — create worktree off selected branch |
 | c | New Claude session |
 | r | Resume latest Claude session |
